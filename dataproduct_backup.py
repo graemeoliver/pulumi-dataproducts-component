@@ -11,7 +11,7 @@ import pulumi_gcp as gcp
 import json
 from datetime import datetime
 from typing_extensions import TypedDict, NotRequired
-from typing import Dict, List, Any
+from typing import Dict, List
 
 
 class CentralizedAspectTypes:
@@ -54,7 +54,7 @@ class DataProductArgs(TypedDict):
     """Human-readable name for the data product"""
     description: Input[str]
     """Detailed description of the data product"""
-    accessGroups: Input[Dict[str, Any]]
+    accessGroups: Input[Dict]
     """Access control groups configuration"""
 
     # Mandatory Business Context Aspects (Required)
@@ -108,7 +108,7 @@ class DataProductArgs(TypedDict):
     """Enable data quality scans"""
     qualityScanSchedule: NotRequired[Input[str]]
     """Cron schedule for quality scans"""
-    qualityRules: NotRequired[Input[List[Dict[str, Any]]]]
+    qualityRules: NotRequired[Input[List]]
     """Data quality rules configuration"""
 
     # Monitoring
@@ -142,9 +142,9 @@ class DataProductArgs(TypedDict):
     """List of pre-approved service account emails"""
 
     # Optional
-    tags: NotRequired[Input[Dict[str, str]]]
+    tags: NotRequired[Input[Dict]]
     """Additional resource tags"""
-    additionalAspects: NotRequired[Input[Dict[str, Any]]]
+    additionalAspects: NotRequired[Input[Dict]]
     """Additional custom aspects"""
 
 
@@ -166,14 +166,6 @@ class DataProductWithAspects(ComponentResource):
     - Aspect types must be created in Dataplex before using this component
     """
 
-    # Output properties
-    dataProductId: pulumi.Output[str]
-    """The data product ID"""
-    dataProductName: pulumi.Output[str]
-    """The full name of the data product"""
-    aspectsApplied: pulumi.Output[int]
-    """Number of aspects applied to the data product"""
-
     def __init__(self,
                  name: str,
                  args: DataProductArgs,
@@ -189,12 +181,12 @@ class DataProductWithAspects(ComponentResource):
         # Create the data product
         self.data_product = gcp.dataplex.DataProduct(
             f"{name}-product",
-            data_product_id=args["dataProductId"],
-            location=args["location"],
-            project=args["project"],
-            display_name=args["displayName"],
-            description=args["description"],
-            labels={**args.get("tags", {}), **cost_labels},
+            data_product_id=args.data_product_id,
+            location=args.location,
+            project=args.project,
+            display_name=args.display_name,
+            description=args.description,
+            labels={**args.tags, **cost_labels},
             opts=child_opts
         )
 
@@ -202,18 +194,18 @@ class DataProductWithAspects(ComponentResource):
         self.aspects = self._apply_mandatory_aspects(name, args, child_opts)
 
         # Apply optional lineage aspect
-        if args.get("upstreamDataProducts", []) or args.get("downstreamDataProducts", []) or args.get("transformationJobs", []):
+        if args.upstream_data_products or args.downstream_data_products or args.transformation_jobs:
             self.aspects['data-lineage'] = self._create_lineage_aspect(name, args, child_opts)
 
         # Apply any additional custom aspects
-        if args.get("additionalAspects", {}):
-            for aspect_name, aspect_config in args.get("additionalAspects", {}).items():
+        if args.additional_aspects:
+            for aspect_name, aspect_config in args.additional_aspects.items():
                 self.aspects[aspect_name] = self._create_aspect(
                     f"{name}-{aspect_name}",
                     aspect_config["aspect_type"],
                     aspect_config["data"],
-                    args["project"],
-                    args["location"],
+                    args.project,
+                    args.location,
                     child_opts
                 )
 
@@ -222,51 +214,45 @@ class DataProductWithAspects(ComponentResource):
 
         # Set up data quality scans
         self.quality_scans = []
-        if args.get("enableDataQualityScans", False):
+        if args.enable_data_quality_scans:
             self.quality_scans = self._setup_data_quality_scans(name, args, child_opts)
 
         # Set up monitoring
         self.monitoring = {}
-        if args.get("enableMonitoring", False):
+        if args.enable_monitoring:
             self.monitoring = self._setup_monitoring(name, args, child_opts)
 
         # Create automated access requests for pre-approved service accounts
         self.access_requests = []
-        if args.get("preApprovedServiceAccounts", []):
+        if args.pre_approved_service_accounts:
             self.access_requests = self._setup_automated_access_requests(name, args, child_opts)
 
         # Store version changelog if provided
         self.changelog_object = None
-        if args.get("changelog", ""):
+        if args.changelog:
             self.changelog_object = self._store_changelog(name, args, child_opts)
 
-        # Set output properties
-        self.dataProductId = pulumi.Output.from_input(self.data_product.data_product_id)
-        self.dataProductName = pulumi.Output.from_input(self.data_product.name)
-        self.aspectsApplied = pulumi.Output.from_input(len(self.aspects))
-
         self.register_outputs({
-            'dataProductId': self.dataProductId,
-            'dataProductName': self.dataProductName,
-            'aspectsApplied': self.aspectsApplied,
+            'data_product_id': self.data_product.data_product_id,
+            'data_product_name': self.data_product.name,
             'aspects': self.aspects,
-            'dataAssets': self.data_assets,
-            'qualityScans': self.quality_scans,
+            'data_assets': self.data_assets,
+            'quality_scans': self.quality_scans,
             'monitoring': self.monitoring,
-            'version': args.get("version", "1.0.0")
+            'version': args.version
         })
 
     def _build_cost_labels(self, args: DataProductArgs) -> dict:
         """Build standardized cost tracking labels"""
-        if not args.get("enableCostTracking", True):
+        if not args.enable_cost_tracking:
             return {}
 
         return {
-            "data-product-id": args["dataProductId"].replace("_", "-"),
-            "cost-center": (args.get("costCenter", None) or "unallocated").replace("_", "-"),
-            "business-domain": args["businessDomain"].replace("_", "-"),
+            "data-product-id": args.data_product_id.replace("_", "-"),
+            "cost-center": (args.cost_center or "unallocated").replace("_", "-"),
+            "business-domain": args.business_domain.replace("_", "-"),
             "managed-by": "pulumi",
-            "version": args.get("version", "1.0.0").replace(".", "-")
+            "version": args.version.replace(".", "-")
         }
 
     def _apply_mandatory_aspects(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> dict:
@@ -278,13 +264,13 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-business-context",
             CentralizedAspectTypes.BUSINESS_CONTEXT,
             {
-                "business_domain": args["businessDomain"],
-                "business_owner": args["businessOwner"],
-                "business_purpose": args["businessPurpose"],
-                "glossary_terms": args.get("glossaryTerms", [])
+                "business_domain": args.business_domain,
+                "business_owner": args.business_owner,
+                "business_purpose": args.business_purpose,
+                "glossary_terms": args.glossary_terms
             },
-            args["project"],
-            args["location"],
+            args.project,
+            args.location,
             opts
         )
 
@@ -292,11 +278,11 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-domain-classification",
             CentralizedAspectTypes.DOMAIN_CLASSIFICATION,
             {
-                "domain": args["businessDomain"],
+                "domain": args.business_domain,
                 "classification_date": datetime.now().isoformat()
             },
-            args["project"],
-            args["location"],
+            args.project,
+            args.location,
             opts
         )
 
@@ -305,13 +291,13 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-data-classification",
             CentralizedAspectTypes.DATA_CLASSIFICATION,
             {
-                "classification_level": args["dataClassification"],
-                "contains_pii": args.get("containsPii", False),
-                "classified_by": args["technicalOwner"],
+                "classification_level": args.data_classification,
+                "contains_pii": args.contains_pii,
+                "classified_by": args.technical_owner,
                 "classification_date": datetime.now().isoformat()
             },
-            args["project"],
-            args["location"],
+            args.project,
+            args.location,
             opts
         )
 
@@ -319,13 +305,13 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-compliance-policy",
             CentralizedAspectTypes.COMPLIANCE_POLICY,
             {
-                "applicable_frameworks": args.get("complianceFrameworks", []),
-                "contains_pii": args.get("containsPii", False),
+                "applicable_frameworks": args.compliance_frameworks,
+                "contains_pii": args.contains_pii,
                 "data_residency": "canada",
-                "compliance_contact": args["businessOwner"]
+                "compliance_contact": args.business_owner
             },
-            args["project"],
-            args["location"],
+            args.project,
+            args.location,
             opts
         )
 
@@ -333,13 +319,13 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-retention-policy",
             CentralizedAspectTypes.RETENTION_POLICY,
             {
-                "retention_period_years": args.get("retentionYears", 7),
-                "retention_justification": args["retentionJustification"],
+                "retention_period_years": args.retention_years,
+                "retention_justification": args.retention_justification,
                 "deletion_process": "automated",
-                "policy_owner": args["businessOwner"]
+                "policy_owner": args.business_owner
             },
-            args["project"],
-            args["location"],
+            args.project,
+            args.location,
             opts
         )
 
@@ -348,13 +334,13 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-technical-ownership",
             CentralizedAspectTypes.TECHNICAL_OWNERSHIP,
             {
-                "technical_owner": args["technicalOwner"],
-                "technical_contact": args["technicalContact"],
+                "technical_owner": args.technical_owner,
+                "technical_contact": args.technical_contact,
                 "support_team": "dse-team@telus.com",
                 "oncall_rotation": "pagerduty"
             },
-            args["project"],
-            args["location"],
+            args.project,
+            args.location,
             opts
         )
 
@@ -365,10 +351,10 @@ class DataProductWithAspects(ComponentResource):
                 "deployment_environment": "production",
                 "created_by": "pulumi-automation",
                 "managed_by": "infrastructure-team",
-                "version": args.get("version", "1.0.0")
+                "version": args.version
             },
-            args["project"],
-            args["location"],
+            args.project,
+            args.location,
             opts
         )
 
@@ -376,13 +362,13 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-sla-metadata",
             CentralizedAspectTypes.SLA_METADATA,
             {
-                "sla_tier": args.get("slaTier", "standard"),
-                "availability_target": args.get("availabilityTarget", "99.9%"),
-                "support_hours": args.get("supportHours", "business-hours"),
-                "response_time_target": self._get_response_time(args.get("slaTier", "standard"))
+                "sla_tier": args.sla_tier,
+                "availability_target": args.availability_target,
+                "support_hours": args.support_hours,
+                "response_time_target": self._get_response_time(args.sla_tier)
             },
-            args["project"],
-            args["location"],
+            args.project,
+            args.location,
             opts
         )
 
@@ -394,13 +380,13 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-lineage",
             CentralizedAspectTypes.DATA_LINEAGE,
             {
-                "upstream_sources": args.get("upstreamDataProducts", []),
-                "downstream_consumers": args.get("downstreamDataProducts", []),
-                "transformation_pipeline": args.get("transformationJobs", []),
+                "upstream_sources": args.upstream_data_products,
+                "downstream_consumers": args.downstream_data_products,
+                "transformation_pipeline": args.transformation_jobs,
                 "lineage_updated": datetime.now().isoformat()
             },
-            args["project"],
-            args["location"],
+            args.project,
+            args.location,
             opts
         )
 
@@ -443,18 +429,18 @@ class DataProductWithAspects(ComponentResource):
         """Attach BigQuery datasets and GCS buckets as data assets"""
         assets = []
 
-        for dataset_id in args.get("bigqueryDatasets", []):
+        for dataset_id in args.bigquery_datasets:
             asset = gcp.dataplex.Asset(
                 f"{name}-asset-bq-{dataset_id}",
-                lake=f"projects/{args["project"]}/locations/{args["location"]}/lakes/default",
-                dataplex_zone=f"projects/{args["project"]}/locations/{args["location"]}/lakes/default/zones/default",
-                location=args["location"],
+                lake=f"projects/{args.project}/locations/{args.location}/lakes/default",
+                dataplex_zone=f"projects/{args.project}/locations/{args.location}/lakes/default/zones/default",
+                location=args.location,
                 discovery_spec={
                     "enabled": True,
                     "schedule": "0 */12 * * *"
                 },
                 resource_spec={
-                    "name": f"//bigquery.googleapis.com/projects/{args["project"]}/datasets/{dataset_id}",
+                    "name": f"//bigquery.googleapis.com/projects/{args.project}/datasets/{dataset_id}",
                     "type": "BIGQUERY_DATASET"
                 },
                 labels=self._build_cost_labels(args),
@@ -462,12 +448,12 @@ class DataProductWithAspects(ComponentResource):
             )
             assets.append(asset)
 
-        for bucket_name in args.get("gcsBuckets", []):
+        for bucket_name in args.gcs_buckets:
             asset = gcp.dataplex.Asset(
                 f"{name}-asset-gcs-{bucket_name}",
-                lake=f"projects/{args["project"]}/locations/{args["location"]}/lakes/default",
-                dataplex_zone=f"projects/{args["project"]}/locations/{args["location"]}/lakes/default/zones/default",
-                location=args["location"],
+                lake=f"projects/{args.project}/locations/{args.location}/lakes/default",
+                dataplex_zone=f"projects/{args.project}/locations/{args.location}/lakes/default/zones/default",
+                location=args.location,
                 discovery_spec={
                     "enabled": True,
                     "schedule": "0 */12 * * *"
@@ -487,24 +473,24 @@ class DataProductWithAspects(ComponentResource):
         """Create Dataplex data quality scans for attached datasets"""
         scans = []
 
-        for dataset_id in args.get("bigqueryDatasets", []):
+        for dataset_id in args.bigquery_datasets:
             scan = gcp.dataplex.Datascan(
                 f"{name}-dq-{dataset_id}",
-                data_scan_id=f"{args["dataProductId"]}-dq-{dataset_id}",
-                location=args["location"],
-                project=args["project"],
+                data_scan_id=f"{args.data_product_id}-dq-{dataset_id}",
+                location=args.location,
+                project=args.project,
                 data={
-                    "resource": f"//bigquery.googleapis.com/projects/{args["project"]}/datasets/{dataset_id}"
+                    "resource": f"//bigquery.googleapis.com/projects/{args.project}/datasets/{dataset_id}"
                 },
                 execution_spec={
                     "trigger": {
                         "schedule": {
-                            "cron": args.get("qualityScanSchedule", "0 2 * * *")
+                            "cron": args.quality_scan_schedule
                         }
                     }
                 },
                 data_quality_spec={
-                    "rules": args.get("qualityRules", None) or self._default_quality_rules()
+                    "rules": args.quality_rules or self._default_quality_rules()
                 },
                 labels=self._build_cost_labels(args),
                 opts=opts
@@ -533,14 +519,14 @@ class DataProductWithAspects(ComponentResource):
 
         monitoring = {}
 
-        if args.get("alertEmail", None):
+        if args.alert_email:
             notification_channel = gcp.monitoring.NotificationChannel(
                 f"{name}-email-channel",
                 type="email",
                 labels={
-                    "email_address": args.get("alertEmail", None)
+                    "email_address": args.alert_email
                 },
-                display_name=f"{args["displayName"]} Alerts",
+                display_name=f"{args.display_name} Alerts",
                 opts=opts
             )
 
@@ -552,16 +538,16 @@ class DataProductWithAspects(ComponentResource):
         """Automatically create access requests for pre-approved service accounts"""
         access_requests = []
 
-        for sa in args.get("preApprovedServiceAccounts", []):
-            for group_id in args["accessGroups"].keys():
+        for sa in args.pre_approved_service_accounts:
+            for group_id in args.access_groups.keys():
                 request = gcp.cloudrun.Command(
                     f"{name}-access-{sa.replace('@', '-at-').replace('.', '-')}-{group_id}",
                     create=f"""
                     curl -X POST \\
                       -H "Authorization: Bearer $(gcloud auth print-access-token)" \\
                       -H "Content-Type: application/json" \\
-                      -d '{{"changeRequest": {{"justification": "Automated service account access via Pulumi", "dataProductAccessRequest": {{"parent": "projects/{args["project"]}/locations/{args["location"]}/dataProducts/{args["dataProductId"]}", "accessGroupId": "{group_id}", "requestedPrincipal": "serviceAccount:{sa}"}}}}}}' \\
-                      "https://dataplex.googleapis.com/v1/projects/{args["project"]}/locations/{args["location"]}/dataProducts/{args["dataProductId"]}:requestAccess"
+                      -d '{{"changeRequest": {{"justification": "Automated service account access via Pulumi", "dataProductAccessRequest": {{"parent": "projects/{args.project}/locations/{args.location}/dataProducts/{args.data_product_id}", "accessGroupId": "{group_id}", "requestedPrincipal": "serviceAccount:{sa}"}}}}}}' \\
+                      "https://dataplex.googleapis.com/v1/projects/{args.project}/locations/{args.location}/dataProducts/{args.data_product_id}:requestAccess"
                     """,
                     opts=ResourceOptions(parent=self, depends_on=[self.data_product])
                 )
@@ -573,9 +559,9 @@ class DataProductWithAspects(ComponentResource):
         """Store version changelog in GCS"""
         return gcp.storage.BucketObject(
             f"{name}-changelog",
-            bucket=f"{args["project"]}-dataplex-changelogs",
-            name=f"{args["dataProductId"]}/v{args.get("version", "1.0.0")}/CHANGELOG.md",
-            content=args.get("changelog", ""),
+            bucket=f"{args.project}-dataplex-changelogs",
+            name=f"{args.data_product_id}/v{args.version}/CHANGELOG.md",
+            content=args.changelog,
             opts=opts
         )
 
