@@ -49,7 +49,7 @@ name: my-data-products
 runtime: yaml
 
 packages:
-  dataproducts: https://github.com/telus/pulumi-dataproducts-component@v0.0.1
+  dataproducts: https://github.com/graemeoliver/pulumi-dataproducts-component@v0.0.2
 
 resources:
   revenueAnalytics:
@@ -117,13 +117,13 @@ outputs:
 
 ```yaml
 packages:
-  dataproducts: https://github.com/telus/pulumi-dataproducts-component@v0.0.1
+  dataproducts: https://github.com/graemeoliver/pulumi-dataproducts-component@v0.0.2
 ```
 
 ### Method 2: Via Local Path (Development)
 
 ```bash
-git clone https://github.com/telus/pulumi-dataproducts-component.git
+git clone https://github.com/graemeoliver/pulumi-dataproducts-component.git
 ```
 
 ```yaml
@@ -135,7 +135,7 @@ packages:
 
 ```yaml
 packages:
-  dataproducts: https://github.com/telus/pulumi-dataproducts-component@main
+  dataproducts: https://github.com/graemeoliver/pulumi-dataproducts-component@main
 ```
 
 ---
