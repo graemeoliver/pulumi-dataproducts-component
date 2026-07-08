@@ -1,0 +1,28 @@
+[tool.black]
+line-length = 100
+
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dataproducts-component"
+version = "0.0.1"
+description = "Pulumi component for Dataplex Data Products with standardized governance aspects"
+authors = [
+    {name = "TELUS", email = "data-platform@telus.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pulumi>=3.0.0,<4.0.0",
+    "pulumi-gcp>=7.0.0,<10.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "pytest",
+    "mypy"
+]
