@@ -1,0 +1,3 @@
+config:
+  gcp:project: test-project
+  gcp:region: northamerica-northeast1

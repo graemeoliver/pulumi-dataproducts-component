@@ -13,26 +13,28 @@ from datetime import datetime
 from typing_extensions import TypedDict, NotRequired
 from typing import Dict, List, Any
 
+from . import defaults
+
 
 class CentralizedAspectTypes:
     """Centralized aspect type definitions"""
 
     # Business Context Aspects (Mandatory)
-    BUSINESS_CONTEXT = "projects/{project}/locations/{location}/aspectTypes/business-context"
-    DOMAIN_CLASSIFICATION = "projects/{project}/locations/{location}/aspectTypes/domain-classification"
+    BUSINESS_CONTEXT = defaults.ASPECT_TYPE_BUSINESS_CONTEXT
+    DOMAIN_CLASSIFICATION = defaults.ASPECT_TYPE_DOMAIN_CLASSIFICATION
 
     # Compliance Aspects (Mandatory)
-    DATA_CLASSIFICATION = "projects/{project}/locations/{location}/aspectTypes/data-classification"
-    COMPLIANCE_POLICY = "projects/{project}/locations/{location}/aspectTypes/compliance-policy"
-    RETENTION_POLICY = "projects/{project}/locations/{location}/aspectTypes/retention-policy"
+    DATA_CLASSIFICATION = defaults.ASPECT_TYPE_DATA_CLASSIFICATION
+    COMPLIANCE_POLICY = defaults.ASPECT_TYPE_COMPLIANCE_POLICY
+    RETENTION_POLICY = defaults.ASPECT_TYPE_RETENTION_POLICY
 
     # System/Technical Aspects (Mandatory)
-    OPERATIONAL_METADATA = "projects/{project}/locations/{location}/aspectTypes/operational-metadata"
-    TECHNICAL_OWNERSHIP = "projects/{project}/locations/{location}/aspectTypes/technical-ownership"
-    SLA_METADATA = "projects/{project}/locations/{location}/aspectTypes/sla-metadata"
+    OPERATIONAL_METADATA = defaults.ASPECT_TYPE_OPERATIONAL_METADATA
+    TECHNICAL_OWNERSHIP = defaults.ASPECT_TYPE_TECHNICAL_OWNERSHIP
+    SLA_METADATA = defaults.ASPECT_TYPE_SLA_METADATA
 
     # Optional Aspects
-    DATA_LINEAGE = "projects/{project}/locations/{location}/aspectTypes/data-lineage"
+    DATA_LINEAGE = defaults.ASPECT_TYPE_DATA_LINEAGE
 
     @staticmethod
     def format_aspect_type(aspect_type_template: str, project: str, location: str) -> str:
@@ -141,6 +143,10 @@ class DataProductArgs(TypedDict):
     preApprovedServiceAccounts: NotRequired[Input[List[str]]]
     """List of pre-approved service account emails"""
 
+    # Owner Emails
+    ownerEmails: NotRequired[Input[List[str]]]
+    """List of owner email addresses (defaults to [businessOwner, technicalOwner] if not provided)"""
+
     # Optional
     tags: NotRequired[Input[Dict[str, str]]]
     """Additional resource tags"""
@@ -186,6 +192,9 @@ class DataProductWithAspects(ComponentResource):
         # Build cost tracking labels
         cost_labels = self._build_cost_labels(args)
 
+        # Derive owner_emails from businessOwner and technicalOwner if not explicitly provided
+        owner_emails = args.get("ownerEmails", [args["businessOwner"], args["technicalOwner"]])
+
         # Create the data product
         self.data_product = gcp.dataplex.DataProduct(
             f"{name}-product",
@@ -195,27 +204,16 @@ class DataProductWithAspects(ComponentResource):
             display_name=args["displayName"],
             description=args["description"],
             labels={**args.get("tags", {}), **cost_labels},
+            owner_emails=owner_emails,
             opts=child_opts
         )
 
-        # Apply mandatory aspects
-        self.aspects = self._apply_mandatory_aspects(name, args, child_opts)
+        # Create Entry with aspects to attach metadata to the DataProduct
+        # Note: Aspects are attached via Entry resources, not directly on DataProduct
+        self.entry = self._create_data_product_entry(name, args, child_opts)
 
-        # Apply optional lineage aspect
-        if args.get("upstreamDataProducts", []) or args.get("downstreamDataProducts", []) or args.get("transformationJobs", []):
-            self.aspects['data-lineage'] = self._create_lineage_aspect(name, args, child_opts)
-
-        # Apply any additional custom aspects
-        if args.get("additionalAspects", {}):
-            for aspect_name, aspect_config in args.get("additionalAspects", {}).items():
-                self.aspects[aspect_name] = self._create_aspect(
-                    f"{name}-{aspect_name}",
-                    aspect_config["aspect_type"],
-                    aspect_config["data"],
-                    args["project"],
-                    args["location"],
-                    child_opts
-                )
+        # Store aspects reference for output
+        self.aspects = {}
 
         # Attach data assets
         self.data_assets = self._attach_data_assets(name, args, child_opts)
@@ -253,12 +251,77 @@ class DataProductWithAspects(ComponentResource):
             'dataAssets': self.data_assets,
             'qualityScans': self.quality_scans,
             'monitoring': self.monitoring,
-            'version': args.get("version", "1.0.0")
+            'version': args.get("version", defaults.DEFAULT_VERSION)
         })
+
+    def _create_data_product_entry(self, name: str, args: DataProductArgs, opts: ResourceOptions):
+        """
+        Create an Entry resource to attach aspects to the DataProduct.
+        Based on the pattern from: https://github.com/telus/bi-syrax/blob/feat-dataplex-poc/stacks/data_products/Pulumi.yaml
+        """
+        # Build aspect data
+        aspects = []
+
+        # Business Context Aspect
+        business_aspect_data = {
+            "business_domain": args["businessDomain"],
+            "business_owner": args["businessOwner"],
+            "technical_steward": args["technicalOwner"],
+            "business_definition": args["description"],
+            "data_lineage_documented": True,
+            "criticality_tier": args.get("slaTier", defaults.DEFAULT_SLA_TIER).upper()
+        }
+
+        # Compliance Aspect
+        compliance_aspect_data = {
+            "contains_pii": args.get("containsPii", False),
+            "pii_classification": args["dataClassification"].upper(),
+            "data_retention_days": args.get("retentionYears", defaults.DEFAULT_RETENTION_YEARS) * 365,
+            "regulatory_requirements": args.get("complianceFrameworks", []),
+            "encryption_required": True,
+            "access_classification": args["dataClassification"].upper(),
+            "data_residency_location": "Canada"
+        }
+
+        # Build aspect list - aspects will be attached via Entry resource
+        # Note: AspectTypes must be created separately before using them
+        # For now, we'll comment this out until AspectTypes are created
+
+        pulumi.log.info(
+            f"[{name}] Entry resource with aspects will be created once AspectTypes are defined. "
+            f"Business domain: {args['businessDomain']}, Classification: {args['dataClassification']}"
+        )
+
+        # TODO: Create Entry resource once AspectTypes exist
+        # entry = gcp.dataplex.Entry(
+        #     f"{name}-entry",
+        #     entry_group_id="@dataplex",
+        #     entry_id=self.data_product.name.apply(lambda n: n),
+        #     location=args["location"],
+        #     project=args["project"],
+        #     entry_type=f"projects/{args['project']}/locations/{args['location']}/entryTypes/table",
+        #     fully_qualified_name=self.data_product.name.apply(
+        #         lambda n: f"dataplex:{args['project']}.{args['location']}.{args['dataProductId']}"
+        #     ),
+        #     aspects=[
+        #         {
+        #             "aspectKey": f"{args['project']}.{args['location']}.business-context-aspect",
+        #             "aspect": {"data": json.dumps(business_aspect_data)}
+        #         },
+        #         {
+        #             "aspectKey": f"{args['project']}.{args['location']}.compliance-aspect",
+        #             "aspect": {"data": json.dumps(compliance_aspect_data)}
+        #         }
+        #     ],
+        #     opts=opts
+        # )
+        # return entry
+
+        return None  # Placeholder until AspectTypes are created
 
     def _build_cost_labels(self, args: DataProductArgs) -> dict:
         """Build standardized cost tracking labels"""
-        if not args.get("enableCostTracking", True):
+        if not args.get("enableCostTracking", defaults.DEFAULT_ENABLE_COST_TRACKING):
             return {}
 
         return {
@@ -266,7 +329,7 @@ class DataProductWithAspects(ComponentResource):
             "cost-center": (args.get("costCenter", None) or "unallocated").replace("_", "-"),
             "business-domain": args["businessDomain"].replace("_", "-"),
             "managed-by": "pulumi",
-            "version": args.get("version", "1.0.0").replace(".", "-")
+            "version": args.get("version", defaults.DEFAULT_VERSION).replace(".", "-")
         }
 
     def _apply_mandatory_aspects(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> dict:
@@ -333,7 +396,7 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-retention-policy",
             CentralizedAspectTypes.RETENTION_POLICY,
             {
-                "retention_period_years": args.get("retentionYears", 7),
+                "retention_period_years": args.get("retentionYears", defaults.DEFAULT_RETENTION_YEARS),
                 "retention_justification": args["retentionJustification"],
                 "deletion_process": "automated",
                 "policy_owner": args["businessOwner"]
@@ -365,7 +428,7 @@ class DataProductWithAspects(ComponentResource):
                 "deployment_environment": "production",
                 "created_by": "pulumi-automation",
                 "managed_by": "infrastructure-team",
-                "version": args.get("version", "1.0.0")
+                "version": args.get("version", defaults.DEFAULT_VERSION)
             },
             args["project"],
             args["location"],
@@ -376,10 +439,10 @@ class DataProductWithAspects(ComponentResource):
             f"{name}-sla-metadata",
             CentralizedAspectTypes.SLA_METADATA,
             {
-                "sla_tier": args.get("slaTier", "standard"),
-                "availability_target": args.get("availabilityTarget", "99.9%"),
-                "support_hours": args.get("supportHours", "business-hours"),
-                "response_time_target": self._get_response_time(args.get("slaTier", "standard"))
+                "sla_tier": args.get("slaTier", defaults.DEFAULT_SLA_TIER),
+                "availability_target": args.get("availabilityTarget", defaults.DEFAULT_AVAILABILITY_TARGET),
+                "support_hours": args.get("supportHours", defaults.DEFAULT_SUPPORT_HOURS),
+                "response_time_target": self._get_response_time(args.get("slaTier", defaults.DEFAULT_SLA_TIER))
             },
             args["project"],
             args["location"],
@@ -581,9 +644,4 @@ class DataProductWithAspects(ComponentResource):
 
     def _get_response_time(self, sla_tier: str) -> str:
         """Get response time based on SLA tier"""
-        response_times = {
-            "critical": "15 minutes",
-            "standard": "4 hours",
-            "low": "24 hours"
-        }
-        return response_times.get(sla_tier, "4 hours")
+        return defaults.SLA_RESPONSE_TIMES.get(sla_tier, defaults.SLA_RESPONSE_TIMES["standard"])

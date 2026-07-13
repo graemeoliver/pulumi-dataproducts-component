@@ -27,7 +27,8 @@ dev = [
     "mypy"
 ]
 
-# Flat-layout source-based component: declare the top-level modules explicitly so
-# `pip install .` (run by Pulumi's plugin host) does not fail setuptools auto-discovery.
 [tool.setuptools]
-py-modules = ["dataproduct", "data_product_dh2_orchestrator", "simple_test", "defaults"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["dataproducts*"]
