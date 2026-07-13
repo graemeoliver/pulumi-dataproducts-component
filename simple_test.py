@@ -20,7 +20,7 @@ class SimpleTestComponent(ComponentResource):
     """The test message output"""
 
     def __init__(self, name: str, args: SimpleTestArgs, opts: ResourceOptions = None):
-        super().__init__('dataproducts:index:SimpleTest', name, {}, opts)
+        super().__init__('dataproducts:index:SimpleTestComponent', name, {}, opts)
 
         # Store the message as output
         self.message = pulumi.Output.from_input(args["message"])

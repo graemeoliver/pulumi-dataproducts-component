@@ -26,9 +26,3 @@ dev = [
     "pytest",
     "mypy"
 ]
-
-[tool.setuptools]
-include-package-data = true
-
-[tool.setuptools.packages.find]
-include = ["dataproducts*"]

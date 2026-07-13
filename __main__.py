@@ -4,7 +4,8 @@ Multi-language component provider entry point for dataproducts.
 
 from pulumi.provider.experimental import component_provider_host
 
-from dataproducts import DataProductWithAspects, SimpleTestComponent
+from dataproduct import DataProductWithAspects
+from simple_test import SimpleTestComponent
 
 if __name__ == "__main__":
     component_provider_host(
