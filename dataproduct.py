@@ -301,7 +301,7 @@ class DataProductWithAspects(ComponentResource):
             entry_id=self.data_product.name.apply(lambda n: n.split("/")[-1]),
             location=args["location"],
             project=args["project"],
-            entry_type=f"projects/{project_data.number}/locations/{args['location']}/entryTypes/generic",
+            entry_type=f"projects/{project_data.number}/locations/{args['location']}/entryTypes/dataproduct",
             fully_qualified_name=self.data_product.name.apply(
                 lambda n: f"dataplex:{args['project']}.{args['location']}.{args['dataProductId']}"
             ),
