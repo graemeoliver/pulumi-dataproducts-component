@@ -614,7 +614,7 @@ class DataProductWithAspects(ComponentResource):
 
         return monitoring
 
-    def _setup_automated_access_requests(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[gcp.cloudrun.Command]:
+    def _setup_automated_access_requests(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[Any]:
         """Automatically create access requests for pre-approved service accounts"""
         access_requests = []
 
