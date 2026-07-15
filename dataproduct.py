@@ -30,6 +30,45 @@ VALID_CLASSIFICATION_LEVELS = ["public", "internal", "confidential", "restricted
 """Valid data classification levels"""
 
 
+# ============================================================================
+# Aspect Configuration Registry
+# ============================================================================
+
+class AspectConfig:
+    """Configuration for a single aspect type"""
+    def __init__(self, aspect_type_id: str, builder_method: str, description: str):
+        self.aspect_type_id = aspect_type_id
+        """The AspectType ID in GCP Dataplex"""
+        self.builder_method = builder_method
+        """Name of the method that builds this aspect's data"""
+        self.description = description
+        """Human-readable description of the aspect"""
+
+
+# Registry of all aspects to attach to DataProducts
+# To add a new aspect:
+# 1. Create the AspectType in GCP (via dataproducts-aspect-types stack)
+# 2. Add an AspectConfig entry here
+# 3. Create a corresponding _build_<name>_aspect_data() method
+ASPECT_REGISTRY = [
+    AspectConfig(
+        aspect_type_id="business-context",
+        builder_method="_build_business_aspect_data",
+        description="Business metadata including ownership and purpose"
+    ),
+    AspectConfig(
+        aspect_type_id="data-classification",
+        builder_method="_build_classification_aspect_data",
+        description="Data classification and sensitivity metadata"
+    ),
+    AspectConfig(
+        aspect_type_id="technical-ownership",
+        builder_method="_build_ownership_aspect_data",
+        description="Technical ownership and contact information"
+    ),
+]
+
+
 class DataProductArgs(TypedDict):
     """Arguments for DataProductWithAspects component"""
 
@@ -290,7 +329,15 @@ class DataProductWithAspects(ComponentResource):
             )
 
     def _build_business_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
-        """Build business context aspect data"""
+        """
+        Build business context aspect data.
+
+        GCP Schema (dataproducts-aspect-types/Pulumi.yaml):
+        - business_domain (string, required): Business domain this data product belongs to
+        - business_owner (string, required): Email of the business owner
+        - business_purpose (string, required): Business purpose of this data
+        - glossary_terms (array, optional): Associated glossary terms
+        """
         return {
             "business_domain": args["businessDomain"],
             "business_owner": args["businessOwner"],
@@ -299,21 +346,29 @@ class DataProductWithAspects(ComponentResource):
         }
 
     def _build_classification_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
-        """Build data classification aspect data"""
+        """
+        Build data classification aspect data.
+
+        GCP Schema (dataproducts-aspect-types/Pulumi.yaml):
+        - classification_level (string, required): public, internal, confidential, or restricted
+        - contains_pii (bool, required): Whether data contains PII
+        """
         return {
             "classification_level": args["dataClassification"],
-            "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII),
-            "classified_by": args.get("classifiedBy", args["technicalOwner"]),
-            "classification_date": args.get("classificationDate", datetime.now().strftime("%Y-%m-%d"))
+            "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII)
         }
 
     def _build_ownership_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
-        """Build technical ownership aspect data"""
+        """
+        Build technical ownership aspect data.
+
+        GCP Schema (dataproducts-aspect-types/Pulumi.yaml):
+        - technical_owner (string, required): Technical owner email
+        - technical_contact (string, required): Technical contact email
+        """
         return {
             "technical_owner": args["technicalOwner"],
-            "technical_contact": args["technicalContact"],
-            "support_team": args.get("supportTeam", args["technicalContact"]),
-            "oncall_rotation": args.get("oncallRotation", "N/A")
+            "technical_contact": args["technicalContact"]
         }
 
     def _build_aspect_key(self, aspect_type_id: str, args: DataProductArgs) -> str:
@@ -331,22 +386,49 @@ class DataProductWithAspects(ComponentResource):
         zone_name = args.get("zoneName", DEFAULT_ZONE_NAME)
         return f"projects/{args['project']}/locations/{args['location']}/lakes/{lake_name}/zones/{zone_name}"
 
+    def _build_all_aspects(self, args: DataProductArgs) -> List[Dict[str, Any]]:
+        """
+        Build all aspects from the registry.
+
+        This method dynamically builds all aspects defined in ASPECT_REGISTRY by:
+        1. Calling each aspect's builder method
+        2. Creating the aspect_key
+        3. Serializing the data to JSON
+
+        Returns a list of aspect dictionaries ready to attach to an Entry.
+        """
+        aspects = []
+        for aspect_config in ASPECT_REGISTRY:
+            # Get the builder method by name and call it
+            builder_method = getattr(self, aspect_config.builder_method)
+            aspect_data = builder_method(args)
+
+            # Build the aspect structure
+            aspects.append({
+                "aspect_key": self._build_aspect_key(aspect_config.aspect_type_id, args),
+                "aspect": {
+                    "data": json.dumps(aspect_data)
+                }
+            })
+
+        return aspects
+
     def _create_data_product_entry(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> gcp.dataplex.Entry:
         """
         Create an Entry resource to attach aspects to the DataProduct.
         Based on the pattern from: https://github.com/telus/bi-syrax/blob/feat-dataplex-poc/stacks/data_products/Pulumi.yaml
         """
-        # Build aspect data using helper methods
-        business_aspect_data = self._build_business_aspect_data(args)
-        classification_aspect_data = self._build_classification_aspect_data(args)
-        ownership_aspect_data = self._build_ownership_aspect_data(args)
+        # Build all aspects from the registry
+        aspects = self._build_all_aspects(args)
+
+        # Get aspect type IDs for logging
+        aspect_ids = [config.aspect_type_id for config in ASPECT_REGISTRY]
 
         # Enhanced logging with more context
         pulumi.log.info(
             f"[{name}] Creating Entry resource for DataProduct '{args['dataProductId']}' "
             f"in project {args['project']} ({self._project_data.number}), "
-            f"location {args['location']} with 3 aspects: "
-            f"business-context, data-classification, technical-ownership"
+            f"location {args['location']} with {len(aspects)} aspects: {', '.join(aspect_ids)}"
         )
 
         # Create Entry resource with aspects
@@ -368,26 +450,7 @@ class DataProductWithAspects(ComponentResource):
             fully_qualified_name=self.data_product.name.apply(
                 lambda n: f"dataplex:{args['project']}.{args['location']}.{args['dataProductId']}"
             ),
-            aspects=[
-                {
-                    "aspect_key": self._build_aspect_key("business-context", args),
-                    "aspect": {
-                        "data": json.dumps(business_aspect_data)
-                    }
-                },
-                {
-                    "aspect_key": self._build_aspect_key("data-classification", args),
-                    "aspect": {
-                        "data": json.dumps(classification_aspect_data)
-                    }
-                },
-                {
-                    "aspect_key": self._build_aspect_key("technical-ownership", args),
-                    "aspect": {
-                        "data": json.dumps(ownership_aspect_data)
-                    }
-                }
-            ],
+            aspects=aspects,
             opts=entry_opts
         )
         return entry
@@ -404,103 +467,6 @@ class DataProductWithAspects(ComponentResource):
             "managed-by": "pulumi",
             "version": args.get("version", defaults.DEFAULT_VERSION).replace(".", "-").lower()
         }
-
-    def _apply_mandatory_aspects(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> dict:
-        """Apply mandatory aspects to the data product (only the 3 that exist)"""
-        aspects = {}
-
-        # Business Context Aspect
-        aspects['business-context'] = self._create_aspect(
-            f"{name}-business-context",
-            CentralizedAspectTypes.BUSINESS_CONTEXT,
-            {
-                "business_domain": args["businessDomain"],
-                "business_owner": args["businessOwner"],
-                "business_purpose": args["businessPurpose"]
-            },
-            args["project"],
-            args["location"],
-            opts
-        )
-
-        # Data Classification Aspect
-        aspects['data-classification'] = self._create_aspect(
-            f"{name}-data-classification",
-            CentralizedAspectTypes.DATA_CLASSIFICATION,
-            {
-                "classification_level": args["dataClassification"],
-                "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII)
-            },
-            args["project"],
-            args["location"],
-            opts
-        )
-
-        # Technical Ownership Aspect
-        aspects['technical-ownership'] = self._create_aspect(
-            f"{name}-technical-ownership",
-            CentralizedAspectTypes.TECHNICAL_OWNERSHIP,
-            {
-                "technical_owner": args["technicalOwner"],
-                "technical_contact": args["technicalContact"]
-            },
-            args["project"],
-            args["location"],
-            opts
-        )
-
-        return aspects
-
-    def _create_lineage_aspect(self, name: str, args: DataProductArgs, opts: ResourceOptions):
-        """Create data lineage aspect"""
-        return self._create_aspect(
-            f"{name}-lineage",
-            CentralizedAspectTypes.DATA_LINEAGE,
-            {
-                "upstream_sources": args.get("upstreamDataProducts", []),
-                "downstream_consumers": args.get("downstreamDataProducts", []),
-                "transformation_pipeline": args.get("transformationJobs", []),
-                "lineage_updated": datetime.now().isoformat()
-            },
-            args["project"],
-            args["location"],
-            opts
-        )
-
-    def _create_aspect(self,
-                      name: str,
-                      aspect_type_template: str,
-                      data: dict,
-                      project: str,
-                      location: str,
-                      opts: ResourceOptions):
-        """Helper to create an aspect using REST API"""
-
-        aspect_type = CentralizedAspectTypes.format_aspect_type(aspect_type_template, project, location)
-
-        # Using Command resource since Pulumi GCP doesn't fully support aspects on data products yet
-        return gcp.cloudrun.Command(
-            name,
-            create=Output.all(
-                self.data_product.name,
-                aspect_type,
-                data
-            ).apply(lambda args: self._build_update_command(args[0], args[1], args[2])),
-            delete=f"echo 'Aspect {name} removed with data product'",
-            opts=opts
-        )
-
-    def _build_update_command(self, product_name: str, aspect_type: str, data: dict) -> str:
-        """Build command to attach aspect to data product entry"""
-        data_json = json.dumps(data).replace('"', '\\"')
-
-        return f"""
-        curl -X PATCH \\
-          "https://dataplex.googleapis.com/v1/{product_name}?updateMask=aspects" \\
-          -H "Authorization: Bearer $(gcloud auth print-access-token)" \\
-          -H "Content-Type: application/json" \\
-          -d '{{"aspects": {{"{aspect_type}": {{"aspectType": "{aspect_type}", "data": {data_json}}}}}}}'
-        """
 
     def _attach_data_assets(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[gcp.dataplex.Asset]:
         """Attach BigQuery datasets and GCS buckets as data assets"""
