@@ -26,3 +26,6 @@ dev = [
     "pytest",
     "mypy"
 ]
+
+[tool.setuptools]
+py-modules = ["dataproduct", "data_product_dh2_orchestrator", "simple_test", "defaults"]
