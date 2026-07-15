@@ -269,7 +269,8 @@ class DataProductWithAspects(ComponentResource):
         business_aspect_data = {
             "business_domain": args["businessDomain"],
             "business_owner": args["businessOwner"],
-            "business_purpose": args["businessPurpose"]
+            "business_purpose": args["businessPurpose"],
+            "glossary_terms": args.get("glossaryTerms", [])
         }
 
         # Data Classification Aspect Data
@@ -284,7 +285,9 @@ class DataProductWithAspects(ComponentResource):
         # Technical Ownership Aspect Data
         ownership_aspect_data = {
             "technical_owner": args["technicalOwner"],
-            "technical_contact": args["technicalContact"]
+            "technical_contact": args["technicalContact"],
+            "support_team": args.get("supportTeam", args["technicalContact"]),
+            "oncall_rotation": args.get("oncallRotation", "N/A")
         }
 
         pulumi.log.info(
