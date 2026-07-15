@@ -212,8 +212,12 @@ class DataProductWithAspects(ComponentResource):
         # Note: Aspects are attached via Entry resources, not directly on DataProduct
         self.entry = self._create_data_product_entry(name, args, child_opts)
 
-        # Store aspects reference for output
-        self.aspects = {}
+        # Track aspects that were attached via Entry (for output)
+        self.aspects = {
+            'business-context': 'attached',
+            'data-classification': 'attached',
+            'technical-ownership': 'attached'
+        } if self.entry else {}
 
         # Attach data assets
         self.data_assets = self._attach_data_assets(name, args, child_opts)
@@ -259,65 +263,60 @@ class DataProductWithAspects(ComponentResource):
         Create an Entry resource to attach aspects to the DataProduct.
         Based on the pattern from: https://github.com/telus/bi-syrax/blob/feat-dataplex-poc/stacks/data_products/Pulumi.yaml
         """
-        # Build aspect data
-        aspects = []
+        # Build aspect data for the 3 AspectTypes we created
 
-        # Business Context Aspect
+        # Business Context Aspect Data
         business_aspect_data = {
             "business_domain": args["businessDomain"],
             "business_owner": args["businessOwner"],
-            "technical_steward": args["technicalOwner"],
-            "business_definition": args["description"],
-            "data_lineage_documented": True,
-            "criticality_tier": args.get("slaTier", defaults.DEFAULT_SLA_TIER).upper()
+            "business_purpose": args["businessPurpose"]
         }
 
-        # Compliance Aspect
-        compliance_aspect_data = {
-            "contains_pii": args.get("containsPii", False),
-            "pii_classification": args["dataClassification"].upper(),
-            "data_retention_days": args.get("retentionYears", defaults.DEFAULT_RETENTION_YEARS) * 365,
-            "regulatory_requirements": args.get("complianceFrameworks", []),
-            "encryption_required": True,
-            "access_classification": args["dataClassification"].upper(),
-            "data_residency_location": "Canada"
+        # Data Classification Aspect Data
+        classification_aspect_data = {
+            "classification_level": args["dataClassification"],
+            "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII)
         }
 
-        # Build aspect list - aspects will be attached via Entry resource
-        # Note: AspectTypes must be created separately before using them
-        # For now, we'll comment this out until AspectTypes are created
+        # Technical Ownership Aspect Data
+        ownership_aspect_data = {
+            "technical_owner": args["technicalOwner"],
+            "technical_contact": args["technicalContact"]
+        }
 
         pulumi.log.info(
-            f"[{name}] Entry resource with aspects will be created once AspectTypes are defined. "
+            f"[{name}] Creating Entry resource with 3 aspects. "
             f"Business domain: {args['businessDomain']}, Classification: {args['dataClassification']}"
         )
 
-        # TODO: Create Entry resource once AspectTypes exist
-        # entry = gcp.dataplex.Entry(
-        #     f"{name}-entry",
-        #     entry_group_id="@dataplex",
-        #     entry_id=self.data_product.name.apply(lambda n: n),
-        #     location=args["location"],
-        #     project=args["project"],
-        #     entry_type=f"projects/{args['project']}/locations/{args['location']}/entryTypes/table",
-        #     fully_qualified_name=self.data_product.name.apply(
-        #         lambda n: f"dataplex:{args['project']}.{args['location']}.{args['dataProductId']}"
-        #     ),
-        #     aspects=[
-        #         {
-        #             "aspectKey": f"{args['project']}.{args['location']}.business-context-aspect",
-        #             "aspect": {"data": json.dumps(business_aspect_data)}
-        #         },
-        #         {
-        #             "aspectKey": f"{args['project']}.{args['location']}.compliance-aspect",
-        #             "aspect": {"data": json.dumps(compliance_aspect_data)}
-        #         }
-        #     ],
-        #     opts=opts
-        # )
-        # return entry
-
-        return None  # Placeholder until AspectTypes are created
+        # Create Entry resource with aspects
+        entry = gcp.dataplex.Entry(
+            f"{name}-entry",
+            entry_group_id="@dataplex",
+            entry_id=self.data_product.name.apply(lambda n: n.split("/")[-1]),
+            location=args["location"],
+            project=args["project"],
+            entry_type=f"projects/{args['project']}/locations/{args['location']}/entryTypes/generic",
+            fully_qualified_name=self.data_product.name.apply(
+                lambda n: f"dataplex:{args['project']}.{args['location']}.{args['dataProductId']}"
+            ),
+            aspects=[
+                {
+                    "aspect_type": f"projects/{args['project']}/locations/{args['location']}/aspectTypes/business-context",
+                    "data": json.dumps(business_aspect_data)
+                },
+                {
+                    "aspect_type": f"projects/{args['project']}/locations/{args['location']}/aspectTypes/data-classification",
+                    "data": json.dumps(classification_aspect_data)
+                },
+                {
+                    "aspect_type": f"projects/{args['project']}/locations/{args['location']}/aspectTypes/technical-ownership",
+                    "data": json.dumps(ownership_aspect_data)
+                }
+            ],
+            opts=opts
+        )
+        return entry
 
     def _build_cost_labels(self, args: DataProductArgs) -> dict:
         """Build standardized cost tracking labels"""
@@ -333,116 +332,43 @@ class DataProductWithAspects(ComponentResource):
         }
 
     def _apply_mandatory_aspects(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> dict:
-        """Apply all mandatory aspects to the data product"""
+        """Apply mandatory aspects to the data product (only the 3 that exist)"""
         aspects = {}
 
-        # Business Context Aspects
+        # Business Context Aspect
         aspects['business-context'] = self._create_aspect(
             f"{name}-business-context",
             CentralizedAspectTypes.BUSINESS_CONTEXT,
             {
                 "business_domain": args["businessDomain"],
                 "business_owner": args["businessOwner"],
-                "business_purpose": args["businessPurpose"],
-                "glossary_terms": args.get("glossaryTerms", [])
+                "business_purpose": args["businessPurpose"]
             },
             args["project"],
             args["location"],
             opts
         )
 
-        aspects['domain-classification'] = self._create_aspect(
-            f"{name}-domain-classification",
-            CentralizedAspectTypes.DOMAIN_CLASSIFICATION,
-            {
-                "domain": args["businessDomain"],
-                "classification_date": datetime.now().isoformat()
-            },
-            args["project"],
-            args["location"],
-            opts
-        )
-
-        # Compliance Aspects
+        # Data Classification Aspect
         aspects['data-classification'] = self._create_aspect(
             f"{name}-data-classification",
             CentralizedAspectTypes.DATA_CLASSIFICATION,
             {
                 "classification_level": args["dataClassification"],
-                "contains_pii": args.get("containsPii", False),
-                "classified_by": args["technicalOwner"],
-                "classification_date": datetime.now().isoformat()
+                "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII)
             },
             args["project"],
             args["location"],
             opts
         )
 
-        aspects['compliance-policy'] = self._create_aspect(
-            f"{name}-compliance-policy",
-            CentralizedAspectTypes.COMPLIANCE_POLICY,
-            {
-                "applicable_frameworks": args.get("complianceFrameworks", []),
-                "contains_pii": args.get("containsPii", False),
-                "data_residency": "canada",
-                "compliance_contact": args["businessOwner"]
-            },
-            args["project"],
-            args["location"],
-            opts
-        )
-
-        aspects['retention-policy'] = self._create_aspect(
-            f"{name}-retention-policy",
-            CentralizedAspectTypes.RETENTION_POLICY,
-            {
-                "retention_period_years": args.get("retentionYears", defaults.DEFAULT_RETENTION_YEARS),
-                "retention_justification": args["retentionJustification"],
-                "deletion_process": "automated",
-                "policy_owner": args["businessOwner"]
-            },
-            args["project"],
-            args["location"],
-            opts
-        )
-
-        # System/Technical Aspects
+        # Technical Ownership Aspect
         aspects['technical-ownership'] = self._create_aspect(
             f"{name}-technical-ownership",
             CentralizedAspectTypes.TECHNICAL_OWNERSHIP,
             {
                 "technical_owner": args["technicalOwner"],
-                "technical_contact": args["technicalContact"],
-                "support_team": "dse-team@telus.com",
-                "oncall_rotation": "pagerduty"
-            },
-            args["project"],
-            args["location"],
-            opts
-        )
-
-        aspects['operational-metadata'] = self._create_aspect(
-            f"{name}-operational-metadata",
-            CentralizedAspectTypes.OPERATIONAL_METADATA,
-            {
-                "deployment_environment": "production",
-                "created_by": "pulumi-automation",
-                "managed_by": "infrastructure-team",
-                "version": args.get("version", defaults.DEFAULT_VERSION)
-            },
-            args["project"],
-            args["location"],
-            opts
-        )
-
-        aspects['sla-metadata'] = self._create_aspect(
-            f"{name}-sla-metadata",
-            CentralizedAspectTypes.SLA_METADATA,
-            {
-                "sla_tier": args.get("slaTier", defaults.DEFAULT_SLA_TIER),
-                "availability_target": args.get("availabilityTarget", defaults.DEFAULT_AVAILABILITY_TARGET),
-                "support_hours": args.get("supportHours", defaults.DEFAULT_SUPPORT_HOURS),
-                "response_time_target": self._get_response_time(args.get("slaTier", defaults.DEFAULT_SLA_TIER))
+                "technical_contact": args["technicalContact"]
             },
             args["project"],
             args["location"],
