@@ -295,6 +295,11 @@ class DataProductWithAspects(ComponentResource):
         # Create Entry resource with aspects
         # Note: aspect_key format must be "projectNumber.location.aspectType"
         # Note: aspect_type is read-only and determined automatically by the aspect_key
+        # Note: Entry must wait for DataProduct to be fully created
+        entry_opts = ResourceOptions(
+            parent=self,
+            depends_on=[self.data_product]
+        )
         entry = gcp.dataplex.Entry(
             f"{name}-entry",
             entry_group_id="@dataplex",
@@ -325,7 +330,7 @@ class DataProductWithAspects(ComponentResource):
                     }
                 }
             ],
-            opts=opts
+            opts=entry_opts
         )
         return entry
 
