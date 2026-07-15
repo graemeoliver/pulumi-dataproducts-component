@@ -16,30 +16,18 @@ from typing import Dict, List, Any
 import defaults
 
 
-class CentralizedAspectTypes:
-    """Centralized aspect type definitions"""
+# ============================================================================
+# Constants
+# ============================================================================
 
-    # Business Context Aspects (Mandatory)
-    BUSINESS_CONTEXT = defaults.ASPECT_TYPE_BUSINESS_CONTEXT
-    DOMAIN_CLASSIFICATION = defaults.ASPECT_TYPE_DOMAIN_CLASSIFICATION
+DEFAULT_LAKE_NAME = "default"
+"""Default Dataplex lake name"""
 
-    # Compliance Aspects (Mandatory)
-    DATA_CLASSIFICATION = defaults.ASPECT_TYPE_DATA_CLASSIFICATION
-    COMPLIANCE_POLICY = defaults.ASPECT_TYPE_COMPLIANCE_POLICY
-    RETENTION_POLICY = defaults.ASPECT_TYPE_RETENTION_POLICY
+DEFAULT_ZONE_NAME = "default"
+"""Default Dataplex zone name"""
 
-    # System/Technical Aspects (Mandatory)
-    OPERATIONAL_METADATA = defaults.ASPECT_TYPE_OPERATIONAL_METADATA
-    TECHNICAL_OWNERSHIP = defaults.ASPECT_TYPE_TECHNICAL_OWNERSHIP
-    SLA_METADATA = defaults.ASPECT_TYPE_SLA_METADATA
-
-    # Optional Aspects
-    DATA_LINEAGE = defaults.ASPECT_TYPE_DATA_LINEAGE
-
-    @staticmethod
-    def format_aspect_type(aspect_type_template: str, project: str, location: str) -> str:
-        """Format aspect type path with project and location"""
-        return aspect_type_template.format(project=project, location=location)
+VALID_CLASSIFICATION_LEVELS = ["public", "internal", "confidential", "restricted"]
+"""Valid data classification levels"""
 
 
 class DataProductArgs(TypedDict):
@@ -147,6 +135,12 @@ class DataProductArgs(TypedDict):
     ownerEmails: NotRequired[Input[List[str]]]
     """List of owner email addresses (defaults to [businessOwner, technicalOwner] if not provided)"""
 
+    # Dataplex Structure
+    lakeName: NotRequired[Input[str]]
+    """Dataplex lake name (defaults to 'default')"""
+    zoneName: NotRequired[Input[str]]
+    """Dataplex zone name (defaults to 'default')"""
+
     # Optional
     tags: NotRequired[Input[Dict[str, str]]]
     """Additional resource tags"""
@@ -186,6 +180,15 @@ class DataProductWithAspects(ComponentResource):
                  opts: ResourceOptions = None):
 
         super().__init__('dataproducts:index:DataProductWithAspects', name, {}, opts)
+
+        # Validate input arguments
+        self._validate_args(args)
+
+        # Get and cache project number early (required for Entry creation)
+        try:
+            self._project_data = gcp.organizations.get_project(project_id=args["project"])
+        except Exception as e:
+            raise ValueError(f"Failed to get project number for project '{args['project']}': {e}")
 
         child_opts = ResourceOptions(parent=self)
 
@@ -258,45 +261,93 @@ class DataProductWithAspects(ComponentResource):
             'version': args.get("version", defaults.DEFAULT_VERSION)
         })
 
-    def _create_data_product_entry(self, name: str, args: DataProductArgs, opts: ResourceOptions):
-        """
-        Create an Entry resource to attach aspects to the DataProduct.
-        Based on the pattern from: https://github.com/telus/bi-syrax/blob/feat-dataplex-poc/stacks/data_products/Pulumi.yaml
-        """
-        # Build aspect data for the 3 AspectTypes we created
+    def _validate_args(self, args: DataProductArgs) -> None:
+        """Validate required arguments and formats"""
+        # Check required fields
+        required_fields = [
+            "dataProductId", "project", "location", "displayName", "description",
+            "businessDomain", "businessOwner", "businessPurpose",
+            "dataClassification", "retentionJustification",
+            "technicalOwner", "technicalContact", "accessGroups"
+        ]
 
-        # Business Context Aspect Data
-        business_aspect_data = {
+        for field in required_fields:
+            if not args.get(field):
+                raise ValueError(f"Required field '{field}' is missing or empty")
+
+        # Validate email formats
+        email_fields = ["businessOwner", "technicalOwner", "technicalContact"]
+        for field in email_fields:
+            email = str(args.get(field, ""))
+            if "@" not in email:
+                raise ValueError(f"Field '{field}' must be a valid email address, got: {email}")
+
+        # Validate classification level
+        classification = args.get("dataClassification", "")
+        if classification not in VALID_CLASSIFICATION_LEVELS:
+            raise ValueError(
+                f"dataClassification must be one of {VALID_CLASSIFICATION_LEVELS}, got: {classification}"
+            )
+
+    def _build_business_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
+        """Build business context aspect data"""
+        return {
             "business_domain": args["businessDomain"],
             "business_owner": args["businessOwner"],
             "business_purpose": args["businessPurpose"],
             "glossary_terms": args.get("glossaryTerms", [])
         }
 
-        # Data Classification Aspect Data
-        from datetime import datetime
-        classification_aspect_data = {
+    def _build_classification_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
+        """Build data classification aspect data"""
+        return {
             "classification_level": args["dataClassification"],
             "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII),
             "classified_by": args.get("classifiedBy", args["technicalOwner"]),
             "classification_date": args.get("classificationDate", datetime.now().strftime("%Y-%m-%d"))
         }
 
-        # Technical Ownership Aspect Data
-        ownership_aspect_data = {
+    def _build_ownership_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
+        """Build technical ownership aspect data"""
+        return {
             "technical_owner": args["technicalOwner"],
             "technical_contact": args["technicalContact"],
             "support_team": args.get("supportTeam", args["technicalContact"]),
             "oncall_rotation": args.get("oncallRotation", "N/A")
         }
 
-        pulumi.log.info(
-            f"[{name}] Creating Entry resource with 3 aspects. "
-            f"Business domain: {args['businessDomain']}, Classification: {args['dataClassification']}"
-        )
+    def _build_aspect_key(self, aspect_type_id: str, args: DataProductArgs) -> str:
+        """Build aspect key in the format projectNumber.location.aspectType"""
+        return f"{self._project_data.number}.{args['location']}.{aspect_type_id}"
 
-        # Get project number for entry_type and aspect_key (required format)
-        project_data = gcp.organizations.get_project(project_id=args["project"])
+    def _get_lake_path(self, args: DataProductArgs) -> str:
+        """Get the Dataplex lake path"""
+        lake_name = args.get("lakeName", DEFAULT_LAKE_NAME)
+        return f"projects/{args['project']}/locations/{args['location']}/lakes/{lake_name}"
+
+    def _get_zone_path(self, args: DataProductArgs) -> str:
+        """Get the Dataplex zone path"""
+        lake_name = args.get("lakeName", DEFAULT_LAKE_NAME)
+        zone_name = args.get("zoneName", DEFAULT_ZONE_NAME)
+        return f"projects/{args['project']}/locations/{args['location']}/lakes/{lake_name}/zones/{zone_name}"
+
+    def _create_data_product_entry(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> gcp.dataplex.Entry:
+        """
+        Create an Entry resource to attach aspects to the DataProduct.
+        Based on the pattern from: https://github.com/telus/bi-syrax/blob/feat-dataplex-poc/stacks/data_products/Pulumi.yaml
+        """
+        # Build aspect data using helper methods
+        business_aspect_data = self._build_business_aspect_data(args)
+        classification_aspect_data = self._build_classification_aspect_data(args)
+        ownership_aspect_data = self._build_ownership_aspect_data(args)
+
+        # Enhanced logging with more context
+        pulumi.log.info(
+            f"[{name}] Creating Entry resource for DataProduct '{args['dataProductId']}' "
+            f"in project {args['project']} ({self._project_data.number}), "
+            f"location {args['location']} with 3 aspects: "
+            f"business-context, data-classification, technical-ownership"
+        )
 
         # Create Entry resource with aspects
         # Note: aspect_key format must be "projectNumber.location.aspectType"
@@ -310,28 +361,28 @@ class DataProductWithAspects(ComponentResource):
         entry = gcp.dataplex.Entry(
             f"{name}-entry",
             entry_group_id="@dataplex",
-            entry_id=f"projects/{project_data.number}/locations/{args['location']}/dataProducts/{args['dataProductId']}",
+            entry_id=f"projects/{self._project_data.number}/locations/{args['location']}/dataProducts/{args['dataProductId']}",
             location=args["location"],
-            project=project_data.number,
-            entry_type=f"projects/{project_data.number}/locations/{args['location']}/entryTypes/table",
+            project=self._project_data.number,
+            entry_type=f"projects/{self._project_data.number}/locations/{args['location']}/entryTypes/table",
             fully_qualified_name=self.data_product.name.apply(
                 lambda n: f"dataplex:{args['project']}.{args['location']}.{args['dataProductId']}"
             ),
             aspects=[
                 {
-                    "aspect_key": f"{project_data.number}.{args['location']}.business-context",
+                    "aspect_key": self._build_aspect_key("business-context", args),
                     "aspect": {
                         "data": json.dumps(business_aspect_data)
                     }
                 },
                 {
-                    "aspect_key": f"{project_data.number}.{args['location']}.data-classification",
+                    "aspect_key": self._build_aspect_key("data-classification", args),
                     "aspect": {
                         "data": json.dumps(classification_aspect_data)
                     }
                 },
                 {
-                    "aspect_key": f"{project_data.number}.{args['location']}.technical-ownership",
+                    "aspect_key": self._build_aspect_key("technical-ownership", args),
                     "aspect": {
                         "data": json.dumps(ownership_aspect_data)
                     }
@@ -341,7 +392,7 @@ class DataProductWithAspects(ComponentResource):
         )
         return entry
 
-    def _build_cost_labels(self, args: DataProductArgs) -> dict:
+    def _build_cost_labels(self, args: DataProductArgs) -> Dict[str, str]:
         """Build standardized cost tracking labels"""
         if not args.get("enableCostTracking", defaults.DEFAULT_ENABLE_COST_TRACKING):
             return {}
@@ -451,22 +502,25 @@ class DataProductWithAspects(ComponentResource):
           -d '{{"aspects": {{"{aspect_type}": {{"aspectType": "{aspect_type}", "data": {data_json}}}}}}}'
         """
 
-    def _attach_data_assets(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> list:
+    def _attach_data_assets(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[gcp.dataplex.Asset]:
         """Attach BigQuery datasets and GCS buckets as data assets"""
         assets = []
+
+        lake_path = self._get_lake_path(args)
+        zone_path = self._get_zone_path(args)
 
         for dataset_id in args.get("bigqueryDatasets", []):
             asset = gcp.dataplex.Asset(
                 f"{name}-asset-bq-{dataset_id}",
-                lake=f"projects/{args["project"]}/locations/{args["location"]}/lakes/default",
-                dataplex_zone=f"projects/{args["project"]}/locations/{args["location"]}/lakes/default/zones/default",
+                lake=lake_path,
+                dataplex_zone=zone_path,
                 location=args["location"],
                 discovery_spec={
                     "enabled": True,
                     "schedule": "0 */12 * * *"
                 },
                 resource_spec={
-                    "name": f"//bigquery.googleapis.com/projects/{args["project"]}/datasets/{dataset_id}",
+                    "name": f"//bigquery.googleapis.com/projects/{args['project']}/datasets/{dataset_id}",
                     "type": "BIGQUERY_DATASET"
                 },
                 labels=self._build_cost_labels(args),
@@ -477,8 +531,8 @@ class DataProductWithAspects(ComponentResource):
         for bucket_name in args.get("gcsBuckets", []):
             asset = gcp.dataplex.Asset(
                 f"{name}-asset-gcs-{bucket_name}",
-                lake=f"projects/{args["project"]}/locations/{args["location"]}/lakes/default",
-                dataplex_zone=f"projects/{args["project"]}/locations/{args["location"]}/lakes/default/zones/default",
+                lake=lake_path,
+                dataplex_zone=zone_path,
                 location=args["location"],
                 discovery_spec={
                     "enabled": True,
@@ -495,7 +549,7 @@ class DataProductWithAspects(ComponentResource):
 
         return assets
 
-    def _setup_data_quality_scans(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> list:
+    def _setup_data_quality_scans(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[gcp.dataplex.Datascan]:
         """Create Dataplex data quality scans for attached datasets"""
         scans = []
 
@@ -525,7 +579,7 @@ class DataProductWithAspects(ComponentResource):
 
         return scans
 
-    def _default_quality_rules(self) -> list:
+    def _default_quality_rules(self) -> List[Dict[str, Any]]:
         """Default data quality rules"""
         return [
             {
@@ -540,7 +594,7 @@ class DataProductWithAspects(ComponentResource):
             }
         ]
 
-    def _setup_monitoring(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> dict:
+    def _setup_monitoring(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> Dict[str, Any]:
         """Set up Cloud Monitoring for data product health"""
 
         monitoring = {}
@@ -560,7 +614,7 @@ class DataProductWithAspects(ComponentResource):
 
         return monitoring
 
-    def _setup_automated_access_requests(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> list:
+    def _setup_automated_access_requests(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[gcp.cloudrun.Command]:
         """Automatically create access requests for pre-approved service accounts"""
         access_requests = []
 
