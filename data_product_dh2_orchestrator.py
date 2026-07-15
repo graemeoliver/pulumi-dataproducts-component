@@ -54,8 +54,8 @@ import pulumi_gcp as gcp
 from typing import Any
 
 # Import the component and defaults
-from .dataproduct import DataProductWithAspects, DataProductArgs
-from . import defaults
+from dataproduct import DataProductWithAspects, DataProductArgs
+import defaults
 
 
 # ---------------------------------------------------------------------------

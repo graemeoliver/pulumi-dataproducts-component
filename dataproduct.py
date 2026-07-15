@@ -13,7 +13,7 @@ from datetime import datetime
 from typing_extensions import TypedDict, NotRequired
 from typing import Dict, List, Any
 
-from . import defaults
+import defaults
 
 
 class CentralizedAspectTypes:
