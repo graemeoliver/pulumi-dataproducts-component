@@ -325,11 +325,11 @@ class DataProductWithAspects(ComponentResource):
             return {}
 
         return {
-            "data-product-id": args["dataProductId"].replace("_", "-"),
-            "cost-center": (args.get("costCenter", None) or "unallocated").replace("_", "-"),
-            "business-domain": args["businessDomain"].replace("_", "-"),
+            "data-product-id": args["dataProductId"].replace("_", "-").lower(),
+            "cost-center": (args.get("costCenter", None) or "unallocated").replace("_", "-").lower(),
+            "business-domain": args["businessDomain"].replace("_", "-").lower(),
             "managed-by": "pulumi",
-            "version": args.get("version", defaults.DEFAULT_VERSION).replace(".", "-")
+            "version": args.get("version", defaults.DEFAULT_VERSION).replace(".", "-").lower()
         }
 
     def _apply_mandatory_aspects(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> dict:
