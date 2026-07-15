@@ -273,9 +273,12 @@ class DataProductWithAspects(ComponentResource):
         }
 
         # Data Classification Aspect Data
+        from datetime import datetime
         classification_aspect_data = {
             "classification_level": args["dataClassification"],
-            "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII)
+            "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII),
+            "classified_by": args.get("classifiedBy", args["technicalOwner"]),
+            "classification_date": args.get("classificationDate", datetime.now().strftime("%Y-%m-%d"))
         }
 
         # Technical Ownership Aspect Data
