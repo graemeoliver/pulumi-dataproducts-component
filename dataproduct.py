@@ -296,6 +296,7 @@ class DataProductWithAspects(ComponentResource):
         # Note: aspect_key format must be "projectNumber.location.aspectType"
         # Note: aspect_type is read-only and determined automatically by the aspect_key
         # Note: Entry must wait for DataProduct to be fully created
+        # Note: When using @dataplex entry group, entryId must be the full resource path
         entry_opts = ResourceOptions(
             parent=self,
             depends_on=[self.data_product]
@@ -303,10 +304,10 @@ class DataProductWithAspects(ComponentResource):
         entry = gcp.dataplex.Entry(
             f"{name}-entry",
             entry_group_id="@dataplex",
-            entry_id=self.data_product.name.apply(lambda n: n.split("/")[-1]),
+            entry_id=f"projects/{project_data.number}/locations/{args['location']}/dataProducts/{args['dataProductId']}",
             location=args["location"],
-            project=args["project"],
-            entry_type=f"projects/{project_data.number}/locations/{args['location']}/entryTypes/dataproduct",
+            project=project_data.number,
+            entry_type=f"projects/{project_data.number}/locations/{args['location']}/entryTypes/table",
             fully_qualified_name=self.data_product.name.apply(
                 lambda n: f"dataplex:{args['project']}.{args['location']}.{args['dataProductId']}"
             ),
