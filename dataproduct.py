@@ -289,11 +289,12 @@ class DataProductWithAspects(ComponentResource):
             f"Business domain: {args['businessDomain']}, Classification: {args['dataClassification']}"
         )
 
-        # Get project number for entry_type (required format)
+        # Get project number for entry_type and aspect_key (required format)
         project_data = gcp.organizations.get_project(project_id=args["project"])
 
         # Create Entry resource with aspects
-        # Note: Aspects must use nested structure with aspect_key and aspect fields
+        # Note: aspect_key must be prefixed with project number
+        # Note: aspect_type is read-only and determined automatically by the aspect_key
         entry = gcp.dataplex.Entry(
             f"{name}-entry",
             entry_group_id="@dataplex",
@@ -306,23 +307,20 @@ class DataProductWithAspects(ComponentResource):
             ),
             aspects=[
                 {
-                    "aspect_key": "business-context",
+                    "aspect_key": f"{project_data.number}.business-context",
                     "aspect": {
-                        "aspect_type": f"projects/{args['project']}/locations/{args['location']}/aspectTypes/business-context",
                         "data": json.dumps(business_aspect_data)
                     }
                 },
                 {
-                    "aspect_key": "data-classification",
+                    "aspect_key": f"{project_data.number}.data-classification",
                     "aspect": {
-                        "aspect_type": f"projects/{args['project']}/locations/{args['location']}/aspectTypes/data-classification",
                         "data": json.dumps(classification_aspect_data)
                     }
                 },
                 {
-                    "aspect_key": "technical-ownership",
+                    "aspect_key": f"{project_data.number}.technical-ownership",
                     "aspect": {
-                        "aspect_type": f"projects/{args['project']}/locations/{args['location']}/aspectTypes/technical-ownership",
                         "data": json.dumps(ownership_aspect_data)
                     }
                 }
