@@ -289,11 +289,11 @@ class DataProductWithAspects(ComponentResource):
             f"Business domain: {args['businessDomain']}, Classification: {args['dataClassification']}"
         )
 
-        # Get project number for entry_type (required format)
+        # Get project number for entry_type and aspect_key (required format)
         project_data = gcp.organizations.get_project(project_id=args["project"])
 
         # Create Entry resource with aspects
-        # Note: aspect_key format must be "project.location.aspectType"
+        # Note: aspect_key format must be "projectNumber.location.aspectType"
         # Note: aspect_type is read-only and determined automatically by the aspect_key
         entry = gcp.dataplex.Entry(
             f"{name}-entry",
@@ -307,19 +307,19 @@ class DataProductWithAspects(ComponentResource):
             ),
             aspects=[
                 {
-                    "aspect_key": f"{args['project']}.{args['location']}.business-context",
+                    "aspect_key": f"{project_data.number}.{args['location']}.business-context",
                     "aspect": {
                         "data": json.dumps(business_aspect_data)
                     }
                 },
                 {
-                    "aspect_key": f"{args['project']}.{args['location']}.data-classification",
+                    "aspect_key": f"{project_data.number}.{args['location']}.data-classification",
                     "aspect": {
                         "data": json.dumps(classification_aspect_data)
                     }
                 },
                 {
-                    "aspect_key": f"{args['project']}.{args['location']}.technical-ownership",
+                    "aspect_key": f"{project_data.number}.{args['location']}.technical-ownership",
                     "aspect": {
                         "data": json.dumps(ownership_aspect_data)
                     }
