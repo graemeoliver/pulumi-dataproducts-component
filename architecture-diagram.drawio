@@ -1,0 +1,227 @@
+<mxfile host="app.diagrams.net" modified="2024-07-15T00:00:00.000Z" agent="Claude" version="21.0.0" type="device">
+  <diagram name="DataProduct Component Architecture" id="component-arch">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="DataProductWithAspects Component - Architecture &amp; Aspect Registry System" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="800" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- User/Consumer Stack -->
+        <mxCell id="user-stack-container" value="Consumer Stack (Pulumi YAML)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="340" height="280" as="geometry" />
+        </mxCell>
+
+        <mxCell id="user-yaml" value="&lt;b&gt;Pulumi.yaml&lt;/b&gt;&lt;br&gt;&lt;br&gt;packages:&lt;br&gt;&amp;nbsp;&amp;nbsp;dataproducts: github.com/...@v0.0.22&lt;br&gt;&lt;br&gt;resources:&lt;br&gt;&amp;nbsp;&amp;nbsp;testDataProduct:&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;type: dataproducts:index:DataProductWithAspects&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;properties:&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;project: cubedev2-lab&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;dataProductId: my-product&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;businessDomain: Engineering&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;businessOwner: user@example.com&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;dataClassification: internal&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;..." style="text;html=1;strokeColor=#666666;fillColor=#f5f5f5;align=left;verticalAlign=top;whiteSpace=wrap;rounded=1;fontFamily=Courier New;fontSize=10;fontColor=#333333;" vertex="1" parent="user-stack-container">
+          <mxGeometry x="10" y="30" width="320" height="240" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from user to component -->
+        <mxCell id="arrow-user-to-component" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;strokeColor=#6C8EBF;fontSize=12;" edge="1" parent="1" source="user-stack-container" target="component-container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-user-label" value="Deploys with args" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1" vertex="1" connectable="0" parent="arrow-user-to-component">
+          <mxGeometry x="-0.2" y="2" relative="1" as="geometry">
+            <mxPoint x="10" y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Component Container -->
+        <mxCell id="component-container" value="DataProductWithAspects Component (dataproduct.py)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="420" y="80" width="740" height="720" as="geometry" />
+        </mxCell>
+
+        <!-- Component Init -->
+        <mxCell id="component-init" value="&lt;b&gt;__init__(name, args, opts)&lt;/b&gt;&lt;br&gt;&lt;br&gt;1. Validate input args&lt;br&gt;2. Cache project number&lt;br&gt;3. Create DataProduct resource&lt;br&gt;4. Create Entry with aspects&lt;br&gt;5. Attach data assets (optional)&lt;br&gt;6. Setup quality scans (optional)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;fontSize=11;" vertex="1" parent="component-container">
+          <mxGeometry x="20" y="40" width="340" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Aspect Registry System -->
+        <mxCell id="aspect-registry-box" value="&lt;b&gt;Aspect Registry System&lt;/b&gt;" style="swimlane;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontStyle=1" vertex="1" parent="component-container">
+          <mxGeometry x="20" y="200" width="700" height="340" as="geometry" />
+        </mxCell>
+
+        <!-- ASPECT_REGISTRY -->
+        <mxCell id="aspect-registry" value="&lt;b&gt;ASPECT_REGISTRY&lt;/b&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot;&gt;&lt;br&gt;[&lt;br&gt;&amp;nbsp;&amp;nbsp;AspectConfig(&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;aspect_type_id=&quot;business-context&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;builder_method=&quot;_build_business_aspect_data&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;description=&quot;Business metadata...&quot;&lt;br&gt;&amp;nbsp;&amp;nbsp;),&lt;br&gt;&amp;nbsp;&amp;nbsp;AspectConfig(&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;aspect_type_id=&quot;data-classification&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;builder_method=&quot;_build_classification_aspect_data&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;description=&quot;Data classification...&quot;&lt;br&gt;&amp;nbsp;&amp;nbsp;),&lt;br&gt;&amp;nbsp;&amp;nbsp;AspectConfig(&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;aspect_type_id=&quot;technical-ownership&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;builder_method=&quot;_build_ownership_aspect_data&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;description=&quot;Technical ownership...&quot;&lt;br&gt;&amp;nbsp;&amp;nbsp;),&lt;br&gt;]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;verticalAlign=top;fontSize=9;" vertex="1" parent="aspect-registry-box">
+          <mxGeometry x="10" y="30" width="330" height="290" as="geometry" />
+        </mxCell>
+
+        <!-- Builder Methods -->
+        <mxCell id="builder-methods" value="&lt;b&gt;Builder Methods&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot;&gt;_build_business_aspect_data(args)&lt;br&gt;&amp;nbsp;&amp;nbsp;→ {business_domain, business_owner, ...}&lt;br&gt;&lt;br&gt;_build_classification_aspect_data(args)&lt;br&gt;&amp;nbsp;&amp;nbsp;→ {classification_level, contains_pii}&lt;br&gt;&lt;br&gt;_build_ownership_aspect_data(args)&lt;br&gt;&amp;nbsp;&amp;nbsp;→ {technical_owner, technical_contact}&lt;br&gt;&lt;br&gt;&lt;/font&gt;&lt;b&gt;Each method:&lt;/b&gt;&lt;br&gt;• Documents GCP schema&lt;br&gt;• Extracts data from args&lt;br&gt;• Returns dict matching AspectType" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;fontSize=9;" vertex="1" parent="aspect-registry-box">
+          <mxGeometry x="350" y="30" width="340" height="200" as="geometry" />
+        </mxCell>
+
+        <!-- _build_all_aspects -->
+        <mxCell id="build-all-aspects" value="&lt;b&gt;_build_all_aspects(args)&lt;/b&gt;&lt;br&gt;&lt;br&gt;for aspect_config in ASPECT_REGISTRY:&lt;br&gt;&amp;nbsp;&amp;nbsp;builder = getattr(self, aspect_config.builder_method)&lt;br&gt;&amp;nbsp;&amp;nbsp;aspect_data = builder(args)&lt;br&gt;&amp;nbsp;&amp;nbsp;aspects.append({&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&quot;aspect_key&quot;: f&quot;{project}.{location}.{aspect_type_id}&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&quot;aspect&quot;: {&quot;data&quot;: json.dumps(aspect_data)}&lt;br&gt;&amp;nbsp;&amp;nbsp;})&lt;br&gt;return aspects" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;fontSize=9;fontFamily=Courier New;" vertex="1" parent="aspect-registry-box">
+          <mxGeometry x="350" y="240" width="340" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from registry to build_all -->
+        <mxCell id="arrow-registry-to-build" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#B85450;dashed=1;" edge="1" parent="aspect-registry-box" source="aspect-registry" target="build-all-aspects">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-registry-label" value="Iterates" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=1" vertex="1" connectable="0" parent="arrow-registry-to-build">
+          <mxGeometry x="-0.1" y="1" relative="1" as="geometry">
+            <mxPoint y="-9" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Entry Creation -->
+        <mxCell id="entry-creation" value="&lt;b&gt;_create_data_product_entry(name, args, opts)&lt;/b&gt;&lt;br&gt;&lt;br&gt;aspects = _build_all_aspects(args)&lt;br&gt;&lt;br&gt;gcp.dataplex.Entry(&lt;br&gt;&amp;nbsp;&amp;nbsp;entry_group_id=&quot;@dataplex&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;entry_id=f&quot;projects/{project_number}/...&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;aspects=aspects,  ← Dynamic from registry&lt;br&gt;&amp;nbsp;&amp;nbsp;...&lt;br&gt;)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;" vertex="1" parent="component-container">
+          <mxGeometry x="20" y="560" width="700" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from init to aspect registry -->
+        <mxCell id="arrow-init-to-registry" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#6C8EBF;" edge="1" parent="component-container" source="component-init" target="aspect-registry-box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-init-label" value="Uses" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1" vertex="1" connectable="0" parent="arrow-init-to-registry">
+          <mxGeometry x="-0.2" relative="1" as="geometry">
+            <mxPoint y="-10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrow from aspect registry to entry -->
+        <mxCell id="arrow-registry-to-entry" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#B85450;" edge="1" parent="component-container" source="aspect-registry-box" target="entry-creation">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-registry-entry-label" value="Builds aspects list" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1" vertex="1" connectable="0" parent="arrow-registry-to-entry">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint y="-10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- GCP Resources Created -->
+        <mxCell id="gcp-resources" value="GCP Dataplex Resources Created" style="swimlane;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1200" y="80" width="360" height="460" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gcp-dataproduct" value="&lt;b&gt;DataProduct Resource&lt;/b&gt;&lt;br&gt;&lt;br&gt;projects/{project}/locations/{location}/&lt;br&gt;dataProducts/{dataProductId}&lt;br&gt;&lt;br&gt;• Core metadata&lt;br&gt;• Owner emails&lt;br&gt;• Labels (cost tracking)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;fontSize=10;" vertex="1" parent="gcp-resources">
+          <mxGeometry x="20" y="40" width="320" height="120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gcp-entry" value="&lt;b&gt;Entry Resource (@dataplex)&lt;/b&gt;&lt;br&gt;&lt;br&gt;entry_id = DataProduct resource path&lt;br&gt;&lt;br&gt;Aspects attached:&lt;br&gt;• business-context&lt;br&gt;• data-classification&lt;br&gt;• technical-ownership&lt;br&gt;&lt;br&gt;Each aspect has:&lt;br&gt;• aspect_key: {project}.{location}.{type}&lt;br&gt;• aspect.data: JSON metadata" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;align=left;verticalAlign=top;fontSize=10;" vertex="1" parent="gcp-resources">
+          <mxGeometry x="20" y="180" width="320" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gcp-optional" value="&lt;b&gt;Optional Resources&lt;/b&gt;&lt;br&gt;&lt;br&gt;• Assets (BigQuery, GCS)&lt;br&gt;• Data Quality Scans&lt;br&gt;• Monitoring Channels" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;align=left;verticalAlign=top;fontSize=10;" vertex="1" parent="gcp-resources">
+          <mxGeometry x="20" y="380" width="320" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from component to GCP -->
+        <mxCell id="arrow-component-to-gcp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;strokeColor=#82B366;" edge="1" parent="1" source="component-container" target="gcp-resources">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-component-gcp-label" value="Creates" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=12;fontStyle=1" vertex="1" connectable="0" parent="arrow-component-to-gcp">
+          <mxGeometry x="-0.1" y="1" relative="1" as="geometry">
+            <mxPoint y="-8" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- AspectType Stack (Infrastructure) -->
+        <mxCell id="aspecttype-stack" value="AspectType Infrastructure Stack (dataproducts-aspect-types)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1200" y="560" width="360" height="240" as="geometry" />
+        </mxCell>
+
+        <mxCell id="aspecttype-list" value="&lt;b&gt;GCP AspectTypes (Created Once)&lt;/b&gt;&lt;br&gt;&lt;br&gt;• business-context AspectType&lt;br&gt;&amp;nbsp;&amp;nbsp;Schema: business_domain, business_owner, ...&lt;br&gt;&lt;br&gt;• data-classification AspectType&lt;br&gt;&amp;nbsp;&amp;nbsp;Schema: classification_level, contains_pii&lt;br&gt;&lt;br&gt;• technical-ownership AspectType&lt;br&gt;&amp;nbsp;&amp;nbsp;Schema: technical_owner, technical_contact&lt;br&gt;&lt;br&gt;These define the schemas that aspects must follow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;fontSize=10;" vertex="1" parent="aspecttype-stack">
+          <mxGeometry x="20" y="40" width="320" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow from aspecttype to entry -->
+        <mxCell id="arrow-aspecttype-to-entry" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#D6B656;dashed=1;" edge="1" parent="1" source="aspecttype-stack" target="gcp-entry">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-aspecttype-label" value="Validates against" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=11;fontStyle=1" vertex="1" connectable="0" parent="arrow-aspecttype-to-entry">
+          <mxGeometry x="-0.3" y="1" relative="1" as="geometry">
+            <mxPoint x="40" y="-9" as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Usage Workflow -->
+        <mxCell id="workflow-title" value="&lt;b&gt;Usage Workflow&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="860" width="200" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Step 1 -->
+        <mxCell id="workflow-step1" value="&lt;b&gt;1. One-Time Setup&lt;/b&gt;&lt;br&gt;&lt;br&gt;Deploy AspectType infrastructure:&lt;br&gt;&lt;font face=&quot;Courier New&quot;&gt;cd dataproducts-aspect-types&lt;br&gt;pulumi up&lt;/font&gt;&lt;br&gt;&lt;br&gt;Creates AspectTypes in GCP Dataplex" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="40" y="900" width="340" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Step 2 -->
+        <mxCell id="workflow-step2" value="&lt;b&gt;2. Use Component&lt;/b&gt;&lt;br&gt;&lt;br&gt;Reference component in your stack:&lt;br&gt;&lt;font face=&quot;Courier New&quot;&gt;packages:&lt;br&gt;&amp;nbsp;&amp;nbsp;dataproducts: github.com/...@v0.0.22&lt;br&gt;&lt;br&gt;resources:&lt;br&gt;&amp;nbsp;&amp;nbsp;myProduct:&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;type: dataproducts:index:DataProductWithAspects&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;properties: {...}&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="420" y="900" width="340" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- Step 3 -->
+        <mxCell id="workflow-step3" value="&lt;b&gt;3. Deploy&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font face=&quot;Courier New&quot;&gt;NO_PROXY=&quot;localhost,127.0.0.1,::1&quot; \&lt;br&gt;&amp;nbsp;&amp;nbsp;pulumi up&lt;/font&gt;&lt;br&gt;&lt;br&gt;Component automatically:&lt;br&gt;• Validates inputs&lt;br&gt;• Builds aspects from registry&lt;br&gt;• Creates DataProduct + Entry&lt;br&gt;• Attaches all aspects" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="800" y="900" width="340" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- Adding New Aspect -->
+        <mxCell id="adding-aspect-title" value="&lt;b&gt;Adding a New Aspect (3 Steps)&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="40" y="1120" width="360" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="add-step1" value="&lt;b&gt;Step 1: Create AspectType in GCP&lt;/b&gt;&lt;br&gt;&lt;br&gt;Edit dataproducts-aspect-types/Pulumi.yaml:&lt;br&gt;&lt;font face=&quot;Courier New&quot; size=&quot;1&quot;&gt;qualityMetrics:&lt;br&gt;&amp;nbsp;&amp;nbsp;type: gcp:dataplex:AspectType&lt;br&gt;&amp;nbsp;&amp;nbsp;properties:&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;aspectTypeId: quality-metrics&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;metadataTemplate: |&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;{&quot;name&quot;: &quot;quality_metrics&quot;, ...}&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1160" width="340" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="add-step2" value="&lt;b&gt;Step 2: Add to ASPECT_REGISTRY&lt;/b&gt;&lt;br&gt;&lt;br&gt;Edit dataproduct.py:&lt;br&gt;&lt;font face=&quot;Courier New&quot; size=&quot;1&quot;&gt;ASPECT_REGISTRY = [&lt;br&gt;&amp;nbsp;&amp;nbsp;# ... existing ...&lt;br&gt;&amp;nbsp;&amp;nbsp;AspectConfig(&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;aspect_type_id=&quot;quality-metrics&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;builder_method=&quot;_build_quality_metrics_aspect_data&quot;,&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;description=&quot;Quality metrics&quot;&lt;br&gt;&amp;nbsp;&amp;nbsp;),&lt;br&gt;]&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;align=left;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="420" y="1160" width="340" height="140" as="geometry" />
+        </mxCell>
+
+        <mxCell id="add-step3" value="&lt;b&gt;Step 3: Create Builder Method&lt;/b&gt;&lt;br&gt;&lt;br&gt;Add to dataproduct.py:&lt;br&gt;&lt;font face=&quot;Courier New&quot; size=&quot;1&quot;&gt;def _build_quality_metrics_aspect_data(&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;self, args: DataProductArgs&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;) -&amp;gt; Dict[str, Any]:&lt;br&gt;&amp;nbsp;&amp;nbsp;&quot;&quot;&quot;Build quality metrics aspect.&lt;br&gt;&amp;nbsp;&amp;nbsp;GCP Schema: accuracy_target, ...&lt;br&gt;&amp;nbsp;&amp;nbsp;&quot;&quot;&quot;&lt;br&gt;&amp;nbsp;&amp;nbsp;return {&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&quot;accuracy_target&quot;: args.get(&quot;accuracyTarget&quot;, &quot;99%&quot;)&lt;br&gt;&amp;nbsp;&amp;nbsp;}&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;align=left;verticalAlign=top;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="800" y="1160" width="340" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow connecting add steps -->
+        <mxCell id="arrow-add-1-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" parent="1" source="add-step1" target="add-step2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="arrow-add-2-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#333333;" edge="1" parent="1" source="add-step2" target="add-step3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Done note -->
+        <mxCell id="done-note" value="✓ Done! Aspect is now automatically built and attached to all DataProducts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="800" y="1320" width="340" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Key Benefits Box -->
+        <mxCell id="benefits-box" value="&lt;b&gt;Key Benefits of Aspect Registry&lt;/b&gt;&lt;br&gt;&lt;br&gt;✓ Single source of truth (ASPECT_REGISTRY)&lt;br&gt;✓ Automatic logging with aspect counts&lt;br&gt;✓ Schema documentation in code&lt;br&gt;✓ Type-safe with getattr() validation&lt;br&gt;✓ Reduced code duplication&lt;br&gt;✓ Easy to test independently&lt;br&gt;✓ Dynamic aspect building" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;align=left;verticalAlign=top;fontSize=11;fontStyle=0" vertex="1" parent="1">
+          <mxGeometry x="1200" y="900" width="360" height="180" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend-title" value="&lt;b&gt;Legend&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="1200" y="1120" width="100" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-user" value="User/Consumer Code" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="1160" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-component" value="Component Code" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="1200" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-registry" value="Aspect Registry System" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="1240" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-gcp" value="GCP Resources" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="1280" width="160" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend-infra" value="Infrastructure/Setup" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="1320" width="160" height="30" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

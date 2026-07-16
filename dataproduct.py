@@ -9,6 +9,7 @@ import pulumi
 from pulumi import ComponentResource, ResourceOptions, Output, Input
 import pulumi_gcp as gcp
 import json
+from dataclasses import dataclass
 from datetime import datetime
 from typing_extensions import TypedDict, NotRequired
 from typing import Dict, List, Any
@@ -34,15 +35,15 @@ VALID_CLASSIFICATION_LEVELS = ["public", "internal", "confidential", "restricted
 # Aspect Configuration Registry
 # ============================================================================
 
+@dataclass
 class AspectConfig:
     """Configuration for a single aspect type"""
-    def __init__(self, aspect_type_id: str, builder_method: str, description: str):
-        self.aspect_type_id = aspect_type_id
-        """The AspectType ID in GCP Dataplex"""
-        self.builder_method = builder_method
-        """Name of the method that builds this aspect's data"""
-        self.description = description
-        """Human-readable description of the aspect"""
+    aspect_type_id: str
+    """The AspectType ID in GCP Dataplex"""
+    builder_method: str
+    """Name of the method that builds this aspect's data"""
+    description: str
+    """Human-readable description of the aspect"""
 
 
 # Registry of all aspects to attach to DataProducts
@@ -139,6 +140,26 @@ class DataProductArgs(TypedDict):
     """Cron schedule for quality scans"""
     qualityRules: NotRequired[Input[List[Dict[str, Any]]]]
     """Data quality rules configuration"""
+
+    # Cloud Scheduler
+    useCloudSchedulerForScans: NotRequired[Input[bool]]
+    """Use Cloud Scheduler to trigger scans instead of internal Dataplex scheduling (default: True)"""
+    schedulerTimeZone: NotRequired[Input[str]]
+    """Time zone for Cloud Scheduler jobs (default: America/Toronto)"""
+    schedulerServiceAccount: NotRequired[Input[str]]
+    """Service account email for Cloud Scheduler jobs (if not provided, uses default compute SA)"""
+    schedulerPaused: NotRequired[Input[bool]]
+    """Explicitly set scheduler jobs to paused or enabled state (default: auto-pause for bi-stg* projects)"""
+    schedulerRetryCount: NotRequired[Input[int]]
+    """Number of retry attempts for failed scheduler jobs (default: 3)"""
+    schedulerMaxRetryDuration: NotRequired[Input[str]]
+    """Maximum duration for retry attempts (default: 300s)"""
+    schedulerMinBackoffDuration: NotRequired[Input[str]]
+    """Minimum backoff duration between retries (default: 5s)"""
+    schedulerMaxBackoffDuration: NotRequired[Input[str]]
+    """Maximum backoff duration between retries (default: 3600s)"""
+    schedulerMaxDoublings: NotRequired[Input[int]]
+    """Maximum number of times to double the backoff duration (default: 5)"""
 
     # Monitoring
     enableMonitoring: NotRequired[Input[bool]]
@@ -266,8 +287,11 @@ class DataProductWithAspects(ComponentResource):
 
         # Set up data quality scans
         self.quality_scans = []
+        self.scheduler_jobs = []
         if args.get("enableDataQualityScans", False):
-            self.quality_scans = self._setup_data_quality_scans(name, args, child_opts)
+            scan_result = self._setup_data_quality_scans(name, args, child_opts)
+            self.quality_scans = scan_result.get("scans", [])
+            self.scheduler_jobs = scan_result.get("schedulers", [])
 
         # Set up monitoring
         self.monitoring = {}
@@ -296,6 +320,7 @@ class DataProductWithAspects(ComponentResource):
             'aspects': self.aspects,
             'dataAssets': self.data_assets,
             'qualityScans': self.quality_scans,
+            'schedulerJobs': self.scheduler_jobs,
             'monitoring': self.monitoring,
             'version': args.get("version", defaults.DEFAULT_VERSION)
         })
@@ -386,6 +411,60 @@ class DataProductWithAspects(ComponentResource):
         zone_name = args.get("zoneName", DEFAULT_ZONE_NAME)
         return f"projects/{args['project']}/locations/{args['location']}/lakes/{lake_name}/zones/{zone_name}"
 
+    def _get_scheduler_config(self, args: DataProductArgs) -> Dict[str, Any]:
+        """Extract Cloud Scheduler configuration with defaults"""
+        return {
+            "time_zone": args.get("schedulerTimeZone", defaults.DEFAULT_SCHEDULER_TIME_ZONE),
+            "retry_count": args.get("schedulerRetryCount", defaults.DEFAULT_SCHEDULER_RETRY_COUNT),
+            "max_retry_duration": args.get("schedulerMaxRetryDuration", defaults.DEFAULT_SCHEDULER_MAX_RETRY_DURATION),
+            "min_backoff": args.get("schedulerMinBackoffDuration", defaults.DEFAULT_SCHEDULER_MIN_BACKOFF_DURATION),
+            "max_backoff": args.get("schedulerMaxBackoffDuration", defaults.DEFAULT_SCHEDULER_MAX_BACKOFF_DURATION),
+            "max_doublings": args.get("schedulerMaxDoublings", defaults.DEFAULT_SCHEDULER_MAX_DOUBLINGS),
+        }
+
+    def _build_retry_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Build Cloud Scheduler retry configuration"""
+        return {
+            "retry_count": config["retry_count"],
+            "max_retry_duration": config["max_retry_duration"],
+            "min_backoff_duration": config["min_backoff"],
+            "max_backoff_duration": config["max_backoff"],
+            "max_doublings": config["max_doublings"]
+        }
+
+    def _determine_scheduler_pause_state(self, name: str, args: DataProductArgs) -> bool:
+        """
+        Determine if scheduler job should be paused.
+
+        Priority:
+        1. Explicit schedulerPaused parameter
+        2. Auto-pause for staging projects (bi-stg*)
+        3. Default to enabled
+
+        Returns:
+            True if job should be paused, False otherwise
+        """
+        project_id = str(args["project"])
+
+        if "schedulerPaused" in args:
+            is_paused = bool(args["schedulerPaused"])
+            state = "PAUSED" if is_paused else "ENABLED"
+            pulumi.log.info(
+                f"[{name}] Cloud Scheduler job will be {state} "
+                f"(explicitly set via schedulerPaused parameter)"
+            )
+            return is_paused
+
+        if project_id.startswith("bi-stg"):
+            pulumi.log.info(
+                f"[{name}] Cloud Scheduler job will be created in PAUSED state "
+                f"(project '{project_id}' starts with 'bi-stg'). "
+                f"Set schedulerPaused=false to enable."
+            )
+            return True
+
+        return False
+
     def _build_all_aspects(self, args: DataProductArgs) -> List[Dict[str, Any]]:
         """
         Build all aspects from the registry.
@@ -468,58 +547,170 @@ class DataProductWithAspects(ComponentResource):
             "version": args.get("version", defaults.DEFAULT_VERSION).replace(".", "-").lower()
         }
 
+    def _create_asset(
+        self,
+        asset_name: str,
+        resource_type: str,
+        resource_id: str,
+        lake_path: str,
+        zone_path: str,
+        args: DataProductArgs,
+        opts: ResourceOptions
+    ) -> gcp.dataplex.Asset:
+        """Create a Dataplex asset for BigQuery dataset or GCS bucket"""
+        resource_map = {
+            "BIGQUERY_DATASET": f"//bigquery.googleapis.com/projects/{args['project']}/datasets/{resource_id}",
+            "STORAGE_BUCKET": f"//storage.googleapis.com/{resource_id}"
+        }
+
+        return gcp.dataplex.Asset(
+            asset_name,
+            lake=lake_path,
+            dataplex_zone=zone_path,
+            location=args["location"],
+            discovery_spec={
+                "enabled": True,
+                "schedule": "0 */12 * * *"
+            },
+            resource_spec={
+                "name": resource_map[resource_type],
+                "type": resource_type
+            },
+            labels=self._build_cost_labels(args),
+            opts=opts
+        )
+
     def _attach_data_assets(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[gcp.dataplex.Asset]:
         """Attach BigQuery datasets and GCS buckets as data assets"""
         assets = []
-
         lake_path = self._get_lake_path(args)
         zone_path = self._get_zone_path(args)
 
         for dataset_id in args.get("bigqueryDatasets", []):
-            asset = gcp.dataplex.Asset(
+            asset = self._create_asset(
                 f"{name}-asset-bq-{dataset_id}",
-                lake=lake_path,
-                dataplex_zone=zone_path,
-                location=args["location"],
-                discovery_spec={
-                    "enabled": True,
-                    "schedule": "0 */12 * * *"
-                },
-                resource_spec={
-                    "name": f"//bigquery.googleapis.com/projects/{args['project']}/datasets/{dataset_id}",
-                    "type": "BIGQUERY_DATASET"
-                },
-                labels=self._build_cost_labels(args),
-                opts=opts
+                "BIGQUERY_DATASET",
+                dataset_id,
+                lake_path,
+                zone_path,
+                args,
+                opts
             )
             assets.append(asset)
 
         for bucket_name in args.get("gcsBuckets", []):
-            asset = gcp.dataplex.Asset(
+            asset = self._create_asset(
                 f"{name}-asset-gcs-{bucket_name}",
-                lake=lake_path,
-                dataplex_zone=zone_path,
-                location=args["location"],
-                discovery_spec={
-                    "enabled": True,
-                    "schedule": "0 */12 * * *"
-                },
-                resource_spec={
-                    "name": f"//storage.googleapis.com/{bucket_name}",
-                    "type": "STORAGE_BUCKET"
-                },
-                labels=self._build_cost_labels(args),
-                opts=opts
+                "STORAGE_BUCKET",
+                bucket_name,
+                lake_path,
+                zone_path,
+                args,
+                opts
             )
             assets.append(asset)
 
         return assets
 
-    def _setup_data_quality_scans(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[gcp.dataplex.Datascan]:
-        """Create Dataplex data quality scans for attached datasets"""
+    def _create_scheduler_job_for_datascan(
+        self,
+        name: str,
+        datascan: gcp.dataplex.Datascan,
+        schedule: str,
+        args: DataProductArgs,
+        opts: ResourceOptions
+    ) -> gcp.cloudscheduler.Job:
+        """
+        Create a Cloud Scheduler job to trigger a Dataplex Datascan on-demand.
+
+        The scheduler job will POST to the Dataplex API to run the datascan.
+
+        NOTE: This method does NOT create IAM bindings. The service account must have
+        the 'roles/dataplex.datascans.runner' role granted separately. See
+        scripts/setup-cloud-scheduler-iam.sh for the required IAM setup.
+
+        IMPORTANT: Jobs are automatically paused for staging projects (project IDs
+        starting with 'bi-stg'). This prevents automated scans from running in
+        staging environments.
+
+        Args:
+            name: Name for the scheduler job resource
+            datascan: The Dataplex Datascan resource to trigger
+            schedule: Cron schedule expression
+            args: Component arguments
+            opts: Pulumi ResourceOptions
+
+        Returns:
+            Cloud Scheduler Job resource
+        """
+        # Get configuration
+        config = self._get_scheduler_config(args)
+        service_account = args.get("schedulerServiceAccount") or \
+                         f"{self._project_data.number}-compute@developer.gserviceaccount.com"
+        is_paused = self._determine_scheduler_pause_state(name, args)
+
+        # Create Cloud Scheduler job
+        return gcp.cloudscheduler.Job(
+            f"{name}-scheduler",
+            name=f"{name}-scheduler",
+            description=f"Cloud Scheduler job to trigger {name} datascan",
+            schedule=schedule,
+            time_zone=config["time_zone"],
+            paused=is_paused,
+            project=args["project"],
+            region=args["location"],
+            http_target={
+                "uri": datascan.name.apply(
+                    lambda datascan_name: f"https://dataplex.googleapis.com/v1/{datascan_name}:run"
+                ),
+                "http_method": "POST",
+                "oauth_token": {
+                    "service_account_email": service_account,
+                    "scope": "https://www.googleapis.com/auth/cloud-platform"
+                }
+            },
+            retry_config=self._build_retry_config(config),
+            opts=ResourceOptions(parent=self, depends_on=[datascan])
+        )
+
+    def _setup_data_quality_scans(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> Dict[str, Any]:
+        """
+        Create Dataplex data quality scans for attached datasets.
+
+        This method supports two modes:
+        1. Cloud Scheduler (default): Creates on-demand datascans triggered by Cloud Scheduler
+        2. Internal scheduling (legacy): Uses Dataplex's internal cron-based scheduling
+
+        Returns:
+            Dict with 'scans' and 'schedulers' keys containing lists of created resources
+        """
         scans = []
+        schedulers = []
+
+        # Check if Cloud Scheduler should be used
+        use_cloud_scheduler = args.get("useCloudSchedulerForScans", defaults.DEFAULT_USE_CLOUD_SCHEDULER)
+        schedule = args.get("qualityScanSchedule", defaults.DEFAULT_QUALITY_SCAN_SCHEDULE)
 
         for dataset_id in args.get("bigqueryDatasets", []):
+            # Build execution_spec based on scheduling mode
+            if use_cloud_scheduler:
+                # On-demand execution (triggered by Cloud Scheduler)
+                execution_spec = {
+                    "trigger": {
+                        "on_demand": {}
+                    }
+                }
+            else:
+                # Internal scheduling (legacy mode)
+                execution_spec = {
+                    "trigger": {
+                        "schedule": {
+                            "cron": schedule
+                        }
+                    }
+                }
+
+            # Create the datascan
             scan = gcp.dataplex.Datascan(
                 f"{name}-dq-{dataset_id}",
                 data_scan_id=f"{args["dataProductId"]}-dq-{dataset_id}",
@@ -528,13 +719,7 @@ class DataProductWithAspects(ComponentResource):
                 data={
                     "resource": f"//bigquery.googleapis.com/projects/{args["project"]}/datasets/{dataset_id}"
                 },
-                execution_spec={
-                    "trigger": {
-                        "schedule": {
-                            "cron": args.get("qualityScanSchedule", "0 2 * * *")
-                        }
-                    }
-                },
+                execution_spec=execution_spec,
                 data_quality_spec={
                     "rules": args.get("qualityRules", None) or self._default_quality_rules()
                 },
@@ -543,7 +728,21 @@ class DataProductWithAspects(ComponentResource):
             )
             scans.append(scan)
 
-        return scans
+            # If using Cloud Scheduler, create a scheduler job for this scan
+            if use_cloud_scheduler:
+                scheduler = self._create_scheduler_job_for_datascan(
+                    name=f"{name}-dq-{dataset_id}",
+                    datascan=scan,
+                    schedule=schedule,
+                    args=args,
+                    opts=opts
+                )
+                schedulers.append(scheduler)
+
+        return {
+            "scans": scans,
+            "schedulers": schedulers
+        }
 
     def _default_quality_rules(self) -> List[Dict[str, Any]]:
         """Default data quality rules"""

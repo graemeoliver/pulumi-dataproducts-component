@@ -76,6 +76,32 @@ DEFAULT_ENABLE_COST_TRACKING = True
 
 
 # ============================================================================
+# Cloud Scheduler Defaults
+# ============================================================================
+
+DEFAULT_USE_CLOUD_SCHEDULER = True
+"""Default flag for using Cloud Scheduler instead of internal Dataplex scheduling"""
+
+DEFAULT_SCHEDULER_TIME_ZONE = "America/Toronto"
+"""Default time zone for Cloud Scheduler jobs"""
+
+DEFAULT_SCHEDULER_RETRY_COUNT = 3
+"""Default number of retry attempts for failed scheduler jobs"""
+
+DEFAULT_SCHEDULER_MAX_RETRY_DURATION = "300s"
+"""Default maximum duration for retry attempts (5 minutes)"""
+
+DEFAULT_SCHEDULER_MIN_BACKOFF_DURATION = "5s"
+"""Default minimum backoff duration between retries"""
+
+DEFAULT_SCHEDULER_MAX_BACKOFF_DURATION = "3600s"
+"""Default maximum backoff duration between retries (1 hour)"""
+
+DEFAULT_SCHEDULER_MAX_DOUBLINGS = 5
+"""Default maximum number of times to double the backoff duration"""
+
+
+# ============================================================================
 # Aspect Type Templates
 # ============================================================================
 

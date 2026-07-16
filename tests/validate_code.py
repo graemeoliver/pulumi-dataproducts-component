@@ -21,26 +21,33 @@ def check_dataproduct_module() -> List[Tuple[str, str]]:
     issues = []
 
     try:
-        from dataproduct import DataProductWithAspects, DataProductArgs, CentralizedAspectTypes
+        from dataproduct import DataProductWithAspects, DataProductArgs, ASPECT_REGISTRY, AspectConfig
 
-        # Check aspect types are properly defined
-        aspect_types = [
-            'BUSINESS_CONTEXT',
-            'DOMAIN_CLASSIFICATION',
-            'DATA_CLASSIFICATION',
-            'COMPLIANCE_POLICY',
-            'RETENTION_POLICY',
-            'OPERATIONAL_METADATA',
-            'TECHNICAL_OWNERSHIP',
-            'SLA_METADATA',
-            'DATA_LINEAGE'
-        ]
+        # Check ASPECT_REGISTRY is properly defined
+        if not isinstance(ASPECT_REGISTRY, list):
+            issues.append(('ERROR', 'ASPECT_REGISTRY must be a list'))
+        elif len(ASPECT_REGISTRY) == 0:
+            issues.append(('ERROR', 'ASPECT_REGISTRY is empty'))
+        else:
+            print(f"[OK] dataproduct.py: ASPECT_REGISTRY defined with {len(ASPECT_REGISTRY)} aspects")
 
-        for aspect in aspect_types:
-            if not hasattr(CentralizedAspectTypes, aspect):
-                issues.append(('ERROR', f'Missing aspect type: {aspect}'))
+            # Check each AspectConfig
+            for idx, aspect_config in enumerate(ASPECT_REGISTRY):
+                if not isinstance(aspect_config, AspectConfig):
+                    issues.append(('ERROR', f'ASPECT_REGISTRY[{idx}] is not an AspectConfig instance'))
+                else:
+                    # Check required attributes
+                    if not hasattr(aspect_config, 'aspect_type_id'):
+                        issues.append(('ERROR', f'AspectConfig {idx} missing aspect_type_id'))
+                    if not hasattr(aspect_config, 'builder_method'):
+                        issues.append(('ERROR', f'AspectConfig {idx} missing builder_method'))
 
-        print("[OK] dataproduct.py: All aspect types defined")
+                    # Check builder method exists
+                    if hasattr(aspect_config, 'builder_method'):
+                        if not hasattr(DataProductWithAspects, aspect_config.builder_method):
+                            issues.append(('ERROR', f'Builder method not found: {aspect_config.builder_method}'))
+                        else:
+                            print(f"[OK] dataproduct.py: Aspect '{aspect_config.aspect_type_id}' -> {aspect_config.builder_method}")
 
         # Check DataProductArgs has required fields
         required_annotations = [
@@ -56,6 +63,13 @@ def check_dataproduct_module() -> List[Tuple[str, str]]:
                     issues.append(('ERROR', f'Missing required field in DataProductArgs: {field}'))
 
         print("[OK] dataproduct.py: All required fields present in DataProductArgs")
+
+        # Check that legacy code has been removed
+        legacy_items = ['CentralizedAspectTypes', '_apply_mandatory_aspects', '_create_aspect']
+        for item in legacy_items:
+            # Check class attributes
+            if hasattr(DataProductWithAspects, item):
+                issues.append(('WARNING', f'Legacy code still present: {item}'))
 
     except ImportError as e:
         issues.append(('ERROR', f'Failed to import dataproduct: {e}'))
