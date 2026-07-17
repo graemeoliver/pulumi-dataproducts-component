@@ -80,6 +80,8 @@ class DataProductArgs(TypedDict):
     """GCP location/region"""
     project: Input[str]
     """GCP project ID"""
+    projectNumber: Input[str]
+    """GCP project number (e.g. 123456789012)"""
     displayName: Input[str]
     """Human-readable name for the data product"""
     description: Input[str]
@@ -244,11 +246,8 @@ class DataProductWithAspects(ComponentResource):
         # Validate input arguments
         self._validate_args(args)
 
-        # Get and cache project number early (required for Entry creation)
-        try:
-            self._project_data = gcp.organizations.get_project(project_id=args["project"])
-        except Exception as e:
-            raise ValueError(f"Failed to get project number for project '{args['project']}': {e}")
+        # Store project number (required for Entry creation and aspect keys)
+        self._project_number = args["projectNumber"]
 
         child_opts = ResourceOptions(parent=self)
 
@@ -329,7 +328,7 @@ class DataProductWithAspects(ComponentResource):
         """Validate required arguments and formats"""
         # Check required fields
         required_fields = [
-            "dataProductId", "project", "location", "displayName", "description",
+            "dataProductId", "project", "projectNumber", "location", "displayName", "description",
             "businessDomain", "businessOwner", "businessPurpose",
             "dataClassification", "retentionJustification",
             "technicalOwner", "technicalContact", "accessGroups"
@@ -374,31 +373,39 @@ class DataProductWithAspects(ComponentResource):
         """
         Build data classification aspect data.
 
-        GCP Schema (dataproducts-aspect-types/Pulumi.yaml):
+        GCP Schema (modified in GCP Console):
         - classification_level (string, required): public, internal, confidential, or restricted
         - contains_pii (bool, required): Whether data contains PII
+        - classified_by (string, required): Email of who classified the data
+        - classification_date (string, required): ISO date when classification was assigned
         """
         return {
             "classification_level": args["dataClassification"],
-            "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII)
+            "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII),
+            "classified_by": args["businessOwner"],
+            "classification_date": datetime.now().strftime("%Y-%m-%d")
         }
 
     def _build_ownership_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
         """
         Build technical ownership aspect data.
 
-        GCP Schema (dataproducts-aspect-types/Pulumi.yaml):
+        GCP Schema (modified in GCP Console):
         - technical_owner (string, required): Technical owner email
         - technical_contact (string, required): Technical contact email
+        - support_team (string, required): Support team email or name
+        - oncall_rotation (string, required): Oncall rotation URL or identifier
         """
         return {
             "technical_owner": args["technicalOwner"],
-            "technical_contact": args["technicalContact"]
+            "technical_contact": args["technicalContact"],
+            "support_team": args.get("supportTeam", args["technicalContact"]),
+            "oncall_rotation": args.get("oncallRotation", "N/A")
         }
 
     def _build_aspect_key(self, aspect_type_id: str, args: DataProductArgs) -> str:
         """Build aspect key in the format projectNumber.location.aspectType"""
-        return f"{self._project_data.number}.{args['location']}.{aspect_type_id}"
+        return f"{self._project_number}.{args['location']}.{aspect_type_id}"
 
     def _get_lake_path(self, args: DataProductArgs) -> str:
         """Get the Dataplex lake path"""
@@ -506,7 +513,7 @@ class DataProductWithAspects(ComponentResource):
         # Enhanced logging with more context
         pulumi.log.info(
             f"[{name}] Creating Entry resource for DataProduct '{args['dataProductId']}' "
-            f"in project {args['project']} ({self._project_data.number}), "
+            f"in project {args['project']} ({self._project_number}), "
             f"location {args['location']} with {len(aspects)} aspects: {', '.join(aspect_ids)}"
         )
 
@@ -522,10 +529,10 @@ class DataProductWithAspects(ComponentResource):
         entry = gcp.dataplex.Entry(
             f"{name}-entry",
             entry_group_id="@dataplex",
-            entry_id=f"projects/{self._project_data.number}/locations/{args['location']}/dataProducts/{args['dataProductId']}",
+            entry_id=f"projects/{self._project_number}/locations/{args['location']}/dataProducts/{args['dataProductId']}",
             location=args["location"],
-            project=self._project_data.number,
-            entry_type=f"projects/{self._project_data.number}/locations/{args['location']}/entryTypes/table",
+            project=self._project_number,
+            entry_type=f"projects/{self._project_number}/locations/{args['location']}/entryTypes/table",
             fully_qualified_name=self.data_product.name.apply(
                 lambda n: f"dataplex:{args['project']}.{args['location']}.{args['dataProductId']}"
             ),
@@ -646,7 +653,7 @@ class DataProductWithAspects(ComponentResource):
         # Get configuration
         config = self._get_scheduler_config(args)
         service_account = args.get("schedulerServiceAccount") or \
-                         f"{self._project_data.number}-compute@developer.gserviceaccount.com"
+                         f"{self._project_number}-compute@developer.gserviceaccount.com"
         is_paused = self._determine_scheduler_pause_state(name, args)
 
         # Create Cloud Scheduler job
