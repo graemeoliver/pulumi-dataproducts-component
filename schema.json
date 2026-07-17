@@ -185,6 +185,10 @@
           "type": "string",
           "description": "GCP project ID"
         },
+        "projectNumber": {
+          "type": "string",
+          "description": "GCP project number (e.g. 123456789012)"
+        },
         "qualityRules": {
           "type": "array",
           "items": {
@@ -265,6 +269,7 @@
         "displayName",
         "location",
         "project",
+        "projectNumber",
         "retentionJustification",
         "technicalContact",
         "technicalOwner"
