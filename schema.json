@@ -1,7 +1,8 @@
 {
   "name": "dataproducts",
   "displayName": "dataproducts",
-  "version": "0.0.27",
+  "version": "0.0.28",
+  "pluginDownloadURL": "github://api.github.com/graemeoliver/pulumi-dataproducts-component",
   "language": {
     "csharp": {
       "respectSchemaVersion": true
