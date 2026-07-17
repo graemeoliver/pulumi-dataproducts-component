@@ -8,6 +8,7 @@ with mandatory business, compliance, and technical aspects.
 import pulumi
 from pulumi import ComponentResource, ResourceOptions, Output, Input
 import pulumi_gcp as gcp
+from pulumi_gcp.dataplex import DataProductDataAsset
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -554,65 +555,57 @@ class DataProductWithAspects(ComponentResource):
             "version": args.get("version", defaults.DEFAULT_VERSION).replace(".", "-").lower()
         }
 
-    def _create_asset(
+    def _create_data_product_asset(
         self,
         asset_name: str,
+        asset_id: str,
         resource_type: str,
         resource_id: str,
-        lake_path: str,
-        zone_path: str,
         args: DataProductArgs,
         opts: ResourceOptions
-    ) -> gcp.dataplex.Asset:
-        """Create a Dataplex asset for BigQuery dataset or GCS bucket"""
+    ) -> DataProductDataAsset:
+        """Create a DataProduct DataAsset for BigQuery dataset or GCS bucket"""
         resource_map = {
             "BIGQUERY_DATASET": f"//bigquery.googleapis.com/projects/{args['project']}/datasets/{resource_id}",
             "STORAGE_BUCKET": f"//storage.googleapis.com/{resource_id}"
         }
 
-        return gcp.dataplex.Asset(
+        return DataProductDataAsset(
             asset_name,
+            data_asset_id=asset_id,
+            data_product_id=args["dataProductId"],
             project=args["project"],
-            lake=lake_path,
-            dataplex_zone=zone_path,
             location=args["location"],
-            discovery_spec={
-                "enabled": True,
-                "schedule": "0 */12 * * *"
-            },
-            resource_spec={
-                "name": resource_map[resource_type],
-                "type": resource_type
-            },
+            resource=resource_map[resource_type],
             labels=self._build_cost_labels(args),
             opts=opts
         )
 
-    def _attach_data_assets(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[gcp.dataplex.Asset]:
-        """Attach BigQuery datasets and GCS buckets as data assets"""
+    def _attach_data_assets(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[DataProductDataAsset]:
+        """Attach BigQuery datasets and GCS buckets as data assets to the DataProduct"""
         assets = []
-        lake_path = self._get_lake_path(args)
-        zone_path = self._get_zone_path(args)
 
         for dataset_id in args.get("bigqueryDatasets", []):
-            asset = self._create_asset(
-                f"{name.lower()}-asset-bq-{dataset_id.replace('_', '-')}",
+            # Sanitize asset ID: lowercase, replace underscores with hyphens
+            asset_id = f"{name.lower()}-asset-bq-{dataset_id.replace('_', '-')}"
+            asset = self._create_data_product_asset(
+                asset_id,  # Pulumi resource name
+                asset_id,  # GCP data_asset_id
                 "BIGQUERY_DATASET",
                 dataset_id,
-                lake_path,
-                zone_path,
                 args,
                 opts
             )
             assets.append(asset)
 
         for bucket_name in args.get("gcsBuckets", []):
-            asset = self._create_asset(
-                f"{name.lower()}-asset-gcs-{bucket_name.replace('_', '-')}",
+            # Sanitize asset ID: lowercase, replace underscores with hyphens
+            asset_id = f"{name.lower()}-asset-gcs-{bucket_name.replace('_', '-')}"
+            asset = self._create_data_product_asset(
+                asset_id,  # Pulumi resource name
+                asset_id,  # GCP data_asset_id
                 "STORAGE_BUCKET",
                 bucket_name,
-                lake_path,
-                zone_path,
                 args,
                 opts
             )
