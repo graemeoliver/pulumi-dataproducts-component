@@ -572,6 +572,7 @@ class DataProductWithAspects(ComponentResource):
 
         return gcp.dataplex.Asset(
             asset_name,
+            project=args["project"],
             lake=lake_path,
             dataplex_zone=zone_path,
             location=args["location"],
@@ -595,7 +596,7 @@ class DataProductWithAspects(ComponentResource):
 
         for dataset_id in args.get("bigqueryDatasets", []):
             asset = self._create_asset(
-                f"{name}-asset-bq-{dataset_id}",
+                f"{name.lower()}-asset-bq-{dataset_id.replace('_', '-')}",
                 "BIGQUERY_DATASET",
                 dataset_id,
                 lake_path,
@@ -607,7 +608,7 @@ class DataProductWithAspects(ComponentResource):
 
         for bucket_name in args.get("gcsBuckets", []):
             asset = self._create_asset(
-                f"{name}-asset-gcs-{bucket_name}",
+                f"{name.lower()}-asset-gcs-{bucket_name.replace('_', '-')}",
                 "STORAGE_BUCKET",
                 bucket_name,
                 lake_path,
