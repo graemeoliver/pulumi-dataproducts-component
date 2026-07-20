@@ -87,8 +87,8 @@ class DataProductArgs(TypedDict):
     """Human-readable name for the data product"""
     description: Input[str]
     """Detailed description of the data product"""
-    accessGroups: Input[Dict[str, Any]]
-    """Access control groups configuration"""
+    readerGroup: NotRequired[Input[str]]
+    """Google Group ID for reader access (e.g., 'data-product-readers@example.com')"""
 
     # Mandatory Business Context Aspects (Required)
     businessDomain: Input[str]
@@ -224,7 +224,7 @@ class DataProductWithAspects(ComponentResource):
     - Optional automated access requests
 
     Prerequisites:
-    - Google Groups specified in access_groups must already exist
+    - Google Group specified in readerGroup must already exist
     - Service accounts must have dataplex.dataProducts.requestAccess permission
     - Aspect types must be created in Dataplex before using this component
     """
@@ -332,7 +332,7 @@ class DataProductWithAspects(ComponentResource):
             "dataProductId", "project", "projectNumber", "location", "displayName", "description",
             "businessDomain", "businessOwner", "businessPurpose",
             "dataClassification", "retentionJustification",
-            "technicalOwner", "technicalContact", "accessGroups"
+            "technicalOwner", "technicalContact"
         ]
 
         for field in required_fields:
@@ -784,20 +784,23 @@ class DataProductWithAspects(ComponentResource):
         """Automatically create access requests for pre-approved service accounts"""
         access_requests = []
 
+        reader_group = args.get("readerGroup")
+        if not reader_group:
+            return access_requests
+
         for sa in args.get("preApprovedServiceAccounts", []):
-            for group_id in args["accessGroups"].keys():
-                request = gcp.cloudrun.Command(
-                    f"{name}-access-{sa.replace('@', '-at-').replace('.', '-')}-{group_id}",
-                    create=f"""
-                    curl -X POST \\
-                      -H "Authorization: Bearer $(gcloud auth print-access-token)" \\
-                      -H "Content-Type: application/json" \\
-                      -d '{{"changeRequest": {{"justification": "Automated service account access via Pulumi", "dataProductAccessRequest": {{"parent": "projects/{args["project"]}/locations/{args["location"]}/dataProducts/{args["dataProductId"]}", "accessGroupId": "{group_id}", "requestedPrincipal": "serviceAccount:{sa}"}}}}}}' \\
-                      "https://dataplex.googleapis.com/v1/projects/{args["project"]}/locations/{args["location"]}/dataProducts/{args["dataProductId"]}:requestAccess"
-                    """,
-                    opts=ResourceOptions(parent=self, depends_on=[self.data_product])
-                )
-                access_requests.append(request)
+            request = gcp.cloudrun.Command(
+                f"{name}-access-{sa.replace('@', '-at-').replace('.', '-')}",
+                create=f"""
+                curl -X POST \\
+                  -H "Authorization: Bearer $(gcloud auth print-access-token)" \\
+                  -H "Content-Type: application/json" \\
+                  -d '{{"changeRequest": {{"justification": "Automated service account access via Pulumi", "dataProductAccessRequest": {{"parent": "projects/{args["project"]}/locations/{args["location"]}/dataProducts/{args["dataProductId"]}", "accessGroupId": "{reader_group}", "requestedPrincipal": "serviceAccount:{sa}"}}}}}}' \\
+                  "https://dataplex.googleapis.com/v1/projects/{args["project"]}/locations/{args["location"]}/dataProducts/{args["dataProductId"]}:requestAccess"
+                """,
+                opts=ResourceOptions(parent=self, depends_on=[self.data_product])
+            )
+            access_requests.append(request)
 
         return access_requests
 

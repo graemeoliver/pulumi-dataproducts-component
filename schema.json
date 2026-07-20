@@ -45,13 +45,9 @@
         "dataProductName"
       ],
       "inputProperties": {
-        "accessGroups": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "pulumi.json#/Any",
-            "plain": true
-          },
-          "description": "Access control groups configuration"
+        "readerGroup": {
+          "type": "string",
+          "description": "Google Group ID for reader access (e.g., 'data-product-readers@example.com')"
         },
         "additionalAspects": {
           "type": "object",
@@ -259,7 +255,6 @@
         }
       },
       "requiredInputs": [
-        "accessGroups",
         "businessDomain",
         "businessOwner",
         "businessPurpose",
