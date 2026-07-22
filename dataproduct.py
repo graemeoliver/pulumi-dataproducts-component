@@ -992,13 +992,15 @@ class DataProductWithAspects(ComponentResource):
         threshold = args.get("qualityScoreThreshold", 0.8)
 
         # Create alert policies for each quality scan
-        for scan in quality_scans:
+        for idx, scan in enumerate(quality_scans):
             scan_id = scan.data_scan_id
+            # Use index for resource name to avoid Output[T] issues
+            scan_suffix = f"{idx}"
 
             # Alert 1: DataScan Job Failure
             # Triggers when a DataScan job fails to complete successfully
             failure_alert = gcp.monitoring.AlertPolicy(
-                f"{name}-dq-failure-{scan_id}",
+                f"{name}-dq-failure-{scan_suffix}",
                 display_name=f"Data Quality Scan Failure - {scan_id}",
                 documentation={
                     "content": f"""
@@ -1062,7 +1064,7 @@ resource.labels.project_id="{args['project']}"
             # Triggers when quality score drops below threshold
             # Note: This requires log-based metrics since Dataplex doesn't expose quality score as a metric
             low_score_alert = gcp.monitoring.AlertPolicy(
-                f"{name}-dq-low-score-{scan_id}",
+                f"{name}-dq-low-score-{scan_suffix}",
                 display_name=f"Low Data Quality Score - {scan_id}",
                 documentation={
                     "content": f"""
@@ -1120,7 +1122,7 @@ severity="WARNING"
             # Alert 3: Scan Staleness
             # Triggers when scan hasn't run in 48 hours (2x daily schedule)
             staleness_alert = gcp.monitoring.AlertPolicy(
-                f"{name}-dq-stale-{scan_id}",
+                f"{name}-dq-stale-{scan_suffix}",
                 display_name=f"Data Quality Scan Stale - {scan_id}",
                 documentation={
                     "content": f"""
