@@ -796,9 +796,11 @@ class DataProductWithAspects(ComponentResource):
                 }
 
             # Create the data quality scan
+            # Note: DataScan IDs must use hyphens, not underscores
+            dataset_id_normalized = dataset_id.replace("_", "-")
             scan = gcp.dataplex.Datascan(
                 f"{name}-dq-{dataset_id}",
-                data_scan_id=f"{args["dataProductId"]}-dq-{dataset_id}",
+                data_scan_id=f"{args["dataProductId"]}-dq-{dataset_id_normalized}",
                 location=args["location"],
                 project=args["project"],
                 data={
@@ -828,7 +830,7 @@ class DataProductWithAspects(ComponentResource):
             if args.get("enableDataProfiling", False):
                 profile_scan = gcp.dataplex.Datascan(
                     f"{name}-profile-{dataset_id}",
-                    data_scan_id=f"{args["dataProductId"]}-profile-{dataset_id}",
+                    data_scan_id=f"{args["dataProductId"]}-profile-{dataset_id_normalized}",
                     location=args["location"],
                     project=args["project"],
                     data={

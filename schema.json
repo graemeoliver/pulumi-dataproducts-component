@@ -1,7 +1,7 @@
 {
   "name": "dataproducts",
   "displayName": "dataproducts",
-  "version": "0.0.31",
+  "version": "0.0.32",
   "language": {
     "csharp": {
       "respectSchemaVersion": true
