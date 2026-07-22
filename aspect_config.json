@@ -1,0 +1,70 @@
+{
+  "_comment": "Aspect configuration for DataProductWithAspects component",
+  "_instructions": "This file defines which aspects the component uses and how to map component args to aspect fields",
+
+  "aspect_types_project": "cubedev2-lab-1c497b",
+  "aspect_types_location": "northamerica-northeast1",
+
+  "aspects": [
+    {
+      "aspect_type_id": "product-and-business-identity",
+      "mandatory": true,
+      "field_mappings": {
+        "data_product_name": "displayName",
+        "business_intent": "businessPurpose",
+        "detailed_product_description": "description",
+        "cto_domain": "businessDomain",
+        "upstream_dependencies": "upstreamDataProducts",
+        "cto_sub_domain": null,
+        "medallion_architecture_levels": ["Gold"],
+        "product_version": "version",
+        "intended_consumption_layers": null,
+        "data_owner_name": "businessOwner",
+        "data_owner_email": "businessOwner",
+        "backup_data_owner_name": "technicalOwner",
+        "backup_data_owner_email": "technicalOwner",
+        "lifecycle_phase": "Active",
+        "metadata_audit_date": null
+      }
+    },
+    {
+      "aspect_type_id": "technical-lineage-and-architecture",
+      "mandatory": true,
+      "field_mappings": {
+        "source_system": "primarySourceSystem",
+        "source_system_id": null
+      }
+    },
+    {
+      "aspect_type_id": "table-governance-and-compliance",
+      "mandatory": false,
+      "field_mappings": {
+        "retention_period_record_number": "retentionJustification",
+        "contains_dntl": null,
+        "geographic_data_residency": "location",
+        "dep_number": null,
+        "dep_risks": null
+      }
+    },
+    {
+      "aspect_type_id": "dataset-reliability-and-quality",
+      "mandatory": false,
+      "field_mappings": {
+        "data_quality_check_frequency": null,
+        "update_frequency": null,
+        "pipeline_sla_uptime_target": null,
+        "data_freshness_latency_minutes": null,
+        "completeness_percentage": null
+      }
+    },
+    {
+      "aspect_type_id": "personal-information-and-confidentiality",
+      "mandatory": false,
+      "field_mappings": {
+        "pi_present": "containsPii",
+        "pi_type": null,
+        "confidentiality_classification": "dataClassification"
+      }
+    }
+  ]
+}

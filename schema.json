@@ -1,7 +1,7 @@
 {
   "name": "dataproducts",
   "displayName": "dataproducts",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "language": {
     "csharp": {
       "respectSchemaVersion": true
@@ -200,6 +200,38 @@
         "qualityScanSchedule": {
           "type": "string",
           "description": "Cron schedule for quality scans"
+        },
+        "dataQualityAlertEmail": {
+          "type": "string",
+          "description": "Email or distribution list for data quality alerts (if not set, uses alertEmail; alerts auto-enabled if email present)"
+        },
+        "qualityScoreThreshold": {
+          "type": "number",
+          "description": "Quality score threshold for alerts (0.0-1.0, default: 0.8 = 80%)"
+        },
+        "enableDataProfiling": {
+          "type": "boolean",
+          "description": "Enable data profiling for automatic column-level statistics (nulls, distinct counts, min/max)"
+        },
+        "profilingSamplingPercent": {
+          "type": "number",
+          "description": "Sampling percentage for profiling (1-100, default: 100)"
+        },
+        "useCloudSchedulerForScans": {
+          "type": "boolean",
+          "description": "Use Cloud Scheduler to trigger quality scans (default: true)"
+        },
+        "schedulerTimeZone": {
+          "type": "string",
+          "description": "Timezone for Cloud Scheduler (default: America/Toronto)"
+        },
+        "lakeName": {
+          "type": "string",
+          "description": "Dataplex lake name"
+        },
+        "zoneName": {
+          "type": "string",
+          "description": "Dataplex zone name"
         },
         "retentionJustification": {
           "type": "string",

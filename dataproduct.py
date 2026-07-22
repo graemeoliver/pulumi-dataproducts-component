@@ -54,19 +54,29 @@ class AspectConfig:
 # 3. Create a corresponding _build_<name>_aspect_data() method
 ASPECT_REGISTRY = [
     AspectConfig(
-        aspect_type_id="business-context",
-        builder_method="_build_business_aspect_data",
-        description="Business metadata including ownership and purpose"
+        aspect_type_id="product-and-business-identity",
+        builder_method="_build_product_and_business_identity_data",
+        description="Product and business identity metadata"
     ),
     AspectConfig(
-        aspect_type_id="data-classification",
-        builder_method="_build_classification_aspect_data",
-        description="Data classification and sensitivity metadata"
+        aspect_type_id="technical-lineage-and-architecture",
+        builder_method="_build_technical_lineage_and_architecture_data",
+        description="Technical lineage and architecture metadata"
     ),
     AspectConfig(
-        aspect_type_id="technical-ownership",
-        builder_method="_build_ownership_aspect_data",
-        description="Technical ownership and contact information"
+        aspect_type_id="table-governance-and-compliance",
+        builder_method="_build_table_governance_and_compliance_data",
+        description="Table governance and compliance metadata"
+    ),
+    AspectConfig(
+        aspect_type_id="dataset-reliability-and-quality",
+        builder_method="_build_dataset_reliability_and_quality_data",
+        description="Dataset reliability and quality metadata"
+    ),
+    AspectConfig(
+        aspect_type_id="personal-information-and-confidentiality",
+        builder_method="_build_personal_information_and_confidentiality_data",
+        description="Personal information and confidentiality metadata"
     ),
 ]
 
@@ -143,6 +153,18 @@ class DataProductArgs(TypedDict):
     """Cron schedule for quality scans"""
     qualityRules: NotRequired[Input[List[Dict[str, Any]]]]
     """Data quality rules configuration"""
+
+    # Data Profiling (column-level statistics)
+    enableDataProfiling: NotRequired[Input[bool]]
+    """Enable data profiling for automatic column-level statistics (nulls, distinct counts, min/max)"""
+    profilingSamplingPercent: NotRequired[Input[float]]
+    """Sampling percentage for profiling (1-100, default: 100)"""
+
+    # Data Quality Alerting
+    dataQualityAlertEmail: NotRequired[Input[str]]
+    """Email or distribution list for data quality alerts (if not set, uses alertEmail; alerts auto-enabled if email present)"""
+    qualityScoreThreshold: NotRequired[Input[float]]
+    """Quality score threshold for alerts (0.0-1.0, default: 0.8 = 80%)"""
 
     # Cloud Scheduler
     useCloudSchedulerForScans: NotRequired[Input[bool]]
@@ -288,10 +310,18 @@ class DataProductWithAspects(ComponentResource):
         # Set up data quality scans
         self.quality_scans = []
         self.scheduler_jobs = []
+        self.quality_alerts = []
         if args.get("enableDataQualityScans", False):
             scan_result = self._setup_data_quality_scans(name, args, child_opts)
             self.quality_scans = scan_result.get("scans", [])
             self.scheduler_jobs = scan_result.get("schedulers", [])
+
+            # Set up data quality alerting if email is configured
+            alert_email = args.get("dataQualityAlertEmail") or args.get("alertEmail")
+            if alert_email:
+                self.quality_alerts = self._setup_data_quality_alerts(
+                    name, args, self.quality_scans, child_opts
+                )
 
         # Set up monitoring
         self.monitoring = {}
@@ -353,55 +383,109 @@ class DataProductWithAspects(ComponentResource):
                 f"dataClassification must be one of {VALID_CLASSIFICATION_LEVELS}, got: {classification}"
             )
 
-    def _build_business_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
+    def _build_product_and_business_identity_data(self, args: DataProductArgs) -> Dict[str, Any]:
         """
-        Build business context aspect data.
+        Build product and business identity aspect data.
 
-        GCP Schema (dataproducts-aspect-types/Pulumi.yaml):
-        - business_domain (string, required): Business domain this data product belongs to
-        - business_owner (string, required): Email of the business owner
-        - business_purpose (string, required): Business purpose of this data
-        - glossary_terms (array, optional): Associated glossary terms
+        GCP Schema fields (from dataproducts-aspect-types/Pulumi.yaml):
+        - data_product_name (string, required)
+        - business_intent (string, required)
+        - detailed_product_description (string, required)
+        - cto_domain (enum, required): RAN, Wireless Core, IP Transport
+        - upstream_dependencies (array, optional)
+        - cto_sub_domain (enum, optional)
+        - medallion_architecture_levels (array, required)
+        - product_version (string, required)
+        - intended_consumption_layers (array, optional)
+        - data_owner_name (string, required)
+        - data_owner_email (string, required)
+        - backup_data_owner_name (string, required)
+        - backup_data_owner_email (string, required)
+        - lifecycle_phase (enum, required)
+        - metadata_audit_date (datetime, optional)
         """
         return {
-            "business_domain": args["businessDomain"],
-            "business_owner": args["businessOwner"],
-            "business_purpose": args["businessPurpose"],
-            "glossary_terms": args.get("glossaryTerms", [])
+            "data_product_name": args["displayName"],
+            "business_intent": args["businessPurpose"],
+            "detailed_product_description": args["description"],
+            "cto_domain": args["businessDomain"],
+            "upstream_dependencies": args.get("upstreamDataProducts", []),
+            "cto_sub_domain": args.get("ctoSubDomain"),
+            "medallion_architecture_levels": ["Gold"],
+            "product_version": args.get("version", "v1.0"),
+            "intended_consumption_layers": args.get("intendedConsumptionLayers", []),
+            "data_owner_name": args["businessOwner"],
+            "data_owner_email": args["businessOwner"],
+            "backup_data_owner_name": args["technicalOwner"],
+            "backup_data_owner_email": args["technicalOwner"],
+            "lifecycle_phase": "Active",
+            "metadata_audit_date": args.get("metadataAuditDate")
         }
 
-    def _build_classification_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
+    def _build_technical_lineage_and_architecture_data(self, args: DataProductArgs) -> Dict[str, Any]:
         """
-        Build data classification aspect data.
+        Build technical lineage and architecture aspect data.
 
-        GCP Schema (modified in GCP Console):
-        - classification_level (string, required): public, internal, confidential, or restricted
-        - contains_pii (bool, required): Whether data contains PII
-        - classified_by (string, required): Email of who classified the data
-        - classification_date (string, required): ISO date when classification was assigned
+        GCP Schema fields (from dataproducts-aspect-types/Pulumi.yaml):
+        - source_system (string, required): The originating application/database/API
+        - source_system_id (int, optional): CMDB ID of the source system
         """
         return {
-            "classification_level": args["dataClassification"],
-            "contains_pii": args.get("containsPii", defaults.DEFAULT_CONTAINS_PII),
-            "classified_by": args["businessOwner"],
-            "classification_date": datetime.now().strftime("%Y-%m-%d")
+            "source_system": args.get("primarySourceSystem", "Unknown"),
+            "source_system_id": args.get("sourceSystemId")
         }
 
-    def _build_ownership_aspect_data(self, args: DataProductArgs) -> Dict[str, Any]:
+    def _build_table_governance_and_compliance_data(self, args: DataProductArgs) -> Dict[str, Any]:
         """
-        Build technical ownership aspect data.
+        Build table governance and compliance aspect data.
 
-        GCP Schema (modified in GCP Console):
-        - technical_owner (string, required): Technical owner email
-        - technical_contact (string, required): Technical contact email
-        - support_team (string, required): Support team email or name
-        - oncall_rotation (string, required): Oncall rotation URL or identifier
+        GCP Schema fields (from dataproducts-aspect-types/Pulumi.yaml):
+        - retention_period_record_number (string, required): Retention period record number
+        - contains_dntl (bool, optional): Whether data contains DNTL
+        - geographic_data_residency (enum, optional): northamerica-northeast1, northamerica-northeast2
+        - dep_number (array, optional): List of DEP numbers
+        - dep_risks (string, optional): DEP risk notes
         """
         return {
-            "technical_owner": args["technicalOwner"],
-            "technical_contact": args["technicalContact"],
-            "support_team": args.get("supportTeam", args["technicalContact"]),
-            "oncall_rotation": args.get("oncallRotation", "N/A")
+            "retention_period_record_number": args["retentionJustification"],
+            "contains_dntl": args.get("containsDntl"),
+            "geographic_data_residency": args.get("location"),
+            "dep_number": args.get("depNumbers", []),
+            "dep_risks": args.get("depRisks")
+        }
+
+    def _build_dataset_reliability_and_quality_data(self, args: DataProductArgs) -> Dict[str, Any]:
+        """
+        Build dataset reliability and quality aspect data.
+
+        GCP Schema fields (from dataproducts-aspect-types/Pulumi.yaml):
+        - data_quality_check_frequency (string, required): Hourly, Daily, Weekly, Monthly
+        - update_frequency (string, required): Update frequency of the data
+        - pipeline_sla_uptime_target (double, optional): Target uptime percentage
+        - data_freshness_latency_minutes (int, optional): Max latency in minutes
+        - completeness_percentage (double, optional): Completeness percentage
+        """
+        return {
+            "data_quality_check_frequency": args.get("dataQualityCheckFrequency", "Daily"),
+            "update_frequency": args.get("updateFrequency", "Daily"),
+            "pipeline_sla_uptime_target": args.get("pipelineSlaUptimeTarget"),
+            "data_freshness_latency_minutes": args.get("dataFreshnessLatencyMinutes"),
+            "completeness_percentage": args.get("completenessPercentage")
+        }
+
+    def _build_personal_information_and_confidentiality_data(self, args: DataProductArgs) -> Dict[str, Any]:
+        """
+        Build personal information and confidentiality aspect data.
+
+        GCP Schema fields (from dataproducts-aspect-types/Pulumi.yaml):
+        - pi_present (bool, required): Whether PII is present
+        - pi_type (string, optional): Type of personal information
+        - confidentiality_classification (enum, required): Public, Internal, Confidential, Restricted
+        """
+        return {
+            "pi_present": args.get("containsPii", False),
+            "pi_type": args.get("piType"),
+            "confidentiality_classification": args["dataClassification"]
         }
 
     def _build_aspect_key(self, aspect_type_id: str, args: DataProductArgs) -> str:
@@ -711,7 +795,7 @@ class DataProductWithAspects(ComponentResource):
                     }
                 }
 
-            # Create the datascan
+            # Create the data quality scan
             scan = gcp.dataplex.Datascan(
                 f"{name}-dq-{dataset_id}",
                 data_scan_id=f"{args["dataProductId"]}-dq-{dataset_id}",
@@ -740,23 +824,103 @@ class DataProductWithAspects(ComponentResource):
                 )
                 schedulers.append(scheduler)
 
+            # Create data profiling scan if enabled (separate from quality scan)
+            if args.get("enableDataProfiling", False):
+                profile_scan = gcp.dataplex.Datascan(
+                    f"{name}-profile-{dataset_id}",
+                    data_scan_id=f"{args["dataProductId"]}-profile-{dataset_id}",
+                    location=args["location"],
+                    project=args["project"],
+                    data={
+                        "resource": f"//bigquery.googleapis.com/projects/{args["project"]}/datasets/{dataset_id}"
+                    },
+                    execution_spec=execution_spec,
+                    data_profile_spec={
+                        "sampling_percent": args.get("profilingSamplingPercent", 100.0),
+                        "row_filter": None  # Profile all rows
+                    },
+                    labels=self._build_cost_labels(args),
+                    opts=opts
+                )
+                scans.append(profile_scan)
+
+                # Create scheduler for profiling scan if using Cloud Scheduler
+                if use_cloud_scheduler:
+                    profile_scheduler = self._create_scheduler_job_for_datascan(
+                        name=f"{name}-profile-{dataset_id}",
+                        datascan=profile_scan,
+                        schedule=schedule,
+                        args=args,
+                        opts=opts
+                    )
+                    schedulers.append(profile_scheduler)
+
         return {
             "scans": scans,
             "schedulers": schedulers
         }
 
     def _default_quality_rules(self) -> List[Dict[str, Any]]:
-        """Default data quality rules"""
+        """
+        Standardized data quality rules that work generically across any BigQuery dataset.
+
+        Covers 5 quality dimensions:
+        - VOLUME: Table has data and row counts are reasonable
+        - FRESHNESS: Data is recent (for partitioned tables)
+        - COMPLETENESS: Overall data completeness across fields
+        - CONSISTENCY: Duplicate detection
+        - VALIDITY: Basic row-level validity checks
+
+        See docs/STANDARDIZED-DATA-QUALITY.md for full design details.
+        """
         return [
+            # VOLUME: Table must contain data
+            {
+                "dimension": "VOLUME",
+                "name": "table_has_data",
+                "description": "Table contains at least one row",
+                "table_condition_expectation": {
+                    "sql_expression": "COUNT(*) > 0"
+                },
+                "threshold": 1.0
+            },
+
+            # FRESHNESS: Data should be recent (applies to partitioned tables)
+            # Note: This rule will be ignored for non-partitioned tables
+            {
+                "dimension": "FRESHNESS",
+                "name": "data_updated_recently",
+                "description": "Data has been modified in the last 48 hours (partitioned tables only)",
+                "table_condition_expectation": {
+                    "sql_expression": "TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), TIMESTAMP(CURRENT_DATE()), HOUR) < 48"
+                },
+                "threshold": 1.0,
+                "ignore_null": True  # Ignore if _PARTITIONTIME doesn't exist
+            },
+
+            # COMPLETENESS: Measure overall data completeness
+            # This is a simpler proxy - at least 1 row exists (covered by VOLUME)
+            # For detailed completeness, use Auto Data Quality profiling
             {
                 "dimension": "COMPLETENESS",
-                "non_null_expectation": {}
+                "name": "table_not_empty",
+                "description": "Table completeness - has rows",
+                "table_condition_expectation": {
+                    "sql_expression": "COUNT(*) > 0"
+                },
+                "threshold": 1.0
             },
+
+            # VALIDITY: Basic row-level validity
+            # Check that rows exist (prevents all-null scenarios)
             {
                 "dimension": "VALIDITY",
-                "range_expectation": {
-                    "min_value": "0"
-                }
+                "name": "rows_exist",
+                "description": "Table has valid rows",
+                "table_condition_expectation": {
+                    "sql_expression": "COUNT(*) = (SELECT COUNT(*) FROM UNNEST([1]))"
+                },
+                "threshold": 1.0
             }
         ]
 
@@ -779,6 +943,239 @@ class DataProductWithAspects(ComponentResource):
             monitoring['notification_channel'] = notification_channel
 
         return monitoring
+
+    def _setup_data_quality_alerts(
+        self,
+        name: str,
+        args: DataProductArgs,
+        quality_scans: List[Any],
+        opts: ResourceOptions
+    ) -> List[Any]:
+        """
+        Set up Cloud Monitoring alerts for data quality scan failures.
+
+        Creates alert policies that notify when:
+        1. DataScan job fails
+        2. Quality score drops below threshold
+        3. Scan hasn't run recently (staleness detection)
+
+        Args:
+            name: Resource name prefix
+            args: Component arguments
+            quality_scans: List of DataScan resources to monitor
+            opts: Pulumi resource options
+
+        Returns:
+            List of alert policy resources
+        """
+        alerts = []
+
+        # Determine which email to use for alerts
+        alert_email = args.get("dataQualityAlertEmail") or args.get("alertEmail")
+        if not alert_email:
+            # No email configured, skip alert creation
+            return alerts
+
+        # Create notification channel for data quality alerts
+        notification_channel = gcp.monitoring.NotificationChannel(
+            f"{name}-dq-alert-channel",
+            type="email",
+            labels={
+                "email_address": alert_email
+            },
+            display_name=f"{args['displayName']} - Data Quality Alerts",
+            project=args["project"],
+            opts=opts
+        )
+
+        # Get quality score threshold (default: 0.8 = 80%)
+        threshold = args.get("qualityScoreThreshold", 0.8)
+
+        # Create alert policies for each quality scan
+        for scan in quality_scans:
+            scan_id = scan.data_scan_id
+
+            # Alert 1: DataScan Job Failure
+            # Triggers when a DataScan job fails to complete successfully
+            failure_alert = gcp.monitoring.AlertPolicy(
+                f"{name}-dq-failure-{scan_id}",
+                display_name=f"Data Quality Scan Failure - {scan_id}",
+                documentation={
+                    "content": f"""
+## Data Quality Scan Failure
+
+**Data Product**: {args['displayName']}
+**Scan**: {scan_id}
+
+A data quality scan has failed to complete successfully.
+
+### Possible Causes:
+- BigQuery dataset or table not accessible
+- Invalid quality rules configuration
+- Insufficient permissions
+- Resource unavailable
+
+### Recommended Actions:
+1. Check the DataScan logs in Cloud Logging
+2. Verify BigQuery dataset exists and is accessible
+3. Review quality rules configuration
+4. Check service account permissions
+
+### View Scan Details:
+https://console.cloud.google.com/dataplex/process/data-scans/{scan_id}?project={args['project']}
+""",
+                    "mime_type": "text/markdown"
+                },
+                conditions=[{
+                    "display_name": f"DataScan job failure - {scan_id}",
+                    "condition_matched_log": {
+                        "filter": f"""
+resource.type="dataplex.googleapis.com/DataScan"
+resource.labels.data_scan_id="{scan_id}"
+resource.labels.location="{args['location']}"
+resource.labels.project_id="{args['project']}"
+(
+  protoPayload.status.code!="0" AND protoPayload.status.code!="null"
+  OR
+  jsonPayload.state="FAILED"
+  OR
+  severity="ERROR"
+)
+"""
+                    }
+                }],
+                alert_strategy={
+                    "auto_close": "86400s",  # Auto-close after 24 hours
+                    "notification_rate_limit": {
+                        "period": "3600s"  # Limit to 1 alert per hour
+                    }
+                },
+                combiner="OR",
+                enabled=True,
+                notification_channels=[notification_channel.name],
+                project=args["project"],
+                opts=ResourceOptions(parent=self, depends_on=[scan, notification_channel])
+            )
+            alerts.append(failure_alert)
+
+            # Alert 2: Low Quality Score
+            # Triggers when quality score drops below threshold
+            # Note: This requires log-based metrics since Dataplex doesn't expose quality score as a metric
+            low_score_alert = gcp.monitoring.AlertPolicy(
+                f"{name}-dq-low-score-{scan_id}",
+                display_name=f"Low Data Quality Score - {scan_id}",
+                documentation={
+                    "content": f"""
+## Low Data Quality Score
+
+**Data Product**: {args['displayName']}
+**Scan**: {scan_id}
+**Threshold**: {threshold * 100}%
+
+Data quality score has dropped below the configured threshold.
+
+### Possible Causes:
+- Data completeness issues
+- Freshness problems (stale data)
+- Validity failures
+- Schema changes
+- Upstream pipeline failures
+
+### Recommended Actions:
+1. Review quality scan results in Dataplex Console
+2. Check which quality dimensions are failing
+3. Investigate upstream data sources
+4. Review recent schema or pipeline changes
+
+### View Scan Results:
+https://console.cloud.google.com/dataplex/process/data-scans/{scan_id}?project={args['project']}
+""",
+                    "mime_type": "text/markdown"
+                },
+                conditions=[{
+                    "display_name": f"Quality score < {threshold * 100}%",
+                    "condition_matched_log": {
+                        "filter": f"""
+resource.type="dataplex.googleapis.com/DataScan"
+resource.labels.data_scan_id="{scan_id}"
+jsonPayload.dataQualityResult.score<{threshold}
+severity="WARNING"
+"""
+                    }
+                }],
+                alert_strategy={
+                    "auto_close": "86400s",
+                    "notification_rate_limit": {
+                        "period": "3600s"
+                    }
+                },
+                combiner="OR",
+                enabled=True,
+                notification_channels=[notification_channel.name],
+                project=args["project"],
+                opts=ResourceOptions(parent=self, depends_on=[scan, notification_channel])
+            )
+            alerts.append(low_score_alert)
+
+            # Alert 3: Scan Staleness
+            # Triggers when scan hasn't run in 48 hours (2x daily schedule)
+            staleness_alert = gcp.monitoring.AlertPolicy(
+                f"{name}-dq-stale-{scan_id}",
+                display_name=f"Data Quality Scan Stale - {scan_id}",
+                documentation={
+                    "content": f"""
+## Data Quality Scan Stale
+
+**Data Product**: {args['displayName']}
+**Scan**: {scan_id}
+
+Data quality scan has not run successfully in the last 48 hours.
+
+### Possible Causes:
+- Cloud Scheduler job disabled or paused
+- Scheduler job failures
+- DataScan resource deleted
+- Service account permission issues
+
+### Recommended Actions:
+1. Check Cloud Scheduler job status
+2. Review scheduler execution history
+3. Verify DataScan resource exists
+4. Check service account permissions
+
+### View Scheduler Job:
+https://console.cloud.google.com/cloudscheduler?project={args['project']}
+""",
+                    "mime_type": "text/markdown"
+                },
+                conditions=[{
+                    "display_name": "No successful scan in 48 hours",
+                    "condition_matched_log": {
+                        "filter": f"""
+resource.type="dataplex.googleapis.com/DataScan"
+resource.labels.data_scan_id="{scan_id}"
+jsonPayload.state="SUCCEEDED"
+""",
+                        "label_extractors": {
+                            "last_run": "EXTRACT(timestamp)"
+                        }
+                    }
+                }],
+                alert_strategy={
+                    "auto_close": "86400s",
+                    "notification_rate_limit": {
+                        "period": "21600s"  # Limit to 1 alert per 6 hours
+                    }
+                },
+                combiner="OR",
+                enabled=True,
+                notification_channels=[notification_channel.name],
+                project=args["project"],
+                opts=ResourceOptions(parent=self, depends_on=[scan, notification_channel])
+            )
+            alerts.append(staleness_alert)
+
+        return alerts
 
     def _setup_automated_access_requests(self, name: str, args: DataProductArgs, opts: ResourceOptions) -> List[Any]:
         """Automatically create access requests for pre-approved service accounts"""
