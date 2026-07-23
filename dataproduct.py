@@ -564,7 +564,8 @@ class DataProductWithAspects(ComponentResource):
         This method dynamically builds all aspects defined in ASPECT_REGISTRY by:
         1. Calling each aspect's builder method
         2. Creating the aspect_key
-        3. Serializing the data to JSON
+        3. Filtering out None values
+        4. Serializing the data to JSON
 
         Returns a list of aspect dictionaries ready to attach to an Entry.
         """
@@ -574,11 +575,14 @@ class DataProductWithAspects(ComponentResource):
             builder_method = getattr(self, aspect_config.builder_method)
             aspect_data = builder_method(args)
 
+            # Filter out None values to avoid sending fields that don't exist in aspect type
+            filtered_data = {k: v for k, v in aspect_data.items() if v is not None}
+
             # Build the aspect structure
             aspects.append({
                 "aspect_key": self._build_aspect_key(aspect_config.aspect_type_id, args),
                 "aspect": {
-                    "data": json.dumps(aspect_data)
+                    "data": json.dumps(filtered_data)
                 }
             })
 
