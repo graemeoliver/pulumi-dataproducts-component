@@ -463,14 +463,14 @@ class DataProductWithAspects(ComponentResource):
         - update_frequency (string, required): Update frequency of the data
         - pipeline_sla_uptime_target (double, optional): Target uptime percentage
         - data_freshness_latency_minutes (int, optional): Max latency in minutes
-        - completeness_percentage (double, optional): Completeness percentage
+
+        Note: completeness_percentage was removed as it doesn't exist in the deployed aspect type
         """
         return {
             "data_quality_check_frequency": args.get("dataQualityCheckFrequency", "Daily"),
             "update_frequency": args.get("updateFrequency", "Daily"),
             "pipeline_sla_uptime_target": args.get("pipelineSlaUptimeTarget"),
-            "data_freshness_latency_minutes": args.get("dataFreshnessLatencyMinutes"),
-            "completeness_percentage": args.get("completenessPercentage")
+            "data_freshness_latency_minutes": args.get("dataFreshnessLatencyMinutes")
         }
 
     def _build_personal_information_and_confidentiality_data(self, args: DataProductArgs) -> Dict[str, Any]:
